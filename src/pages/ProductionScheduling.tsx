@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import {
   Row, Col, Card, Table, Button, DatePicker, Tag, Space, Modal, Form,
-  Input, Select, Steps, Descriptions, message, App, Popconfirm, InputNumber, List, Avatar, Timeline, Tabs
+  Input, Select, Steps, Descriptions, message, App, Popconfirm, InputNumber, List, Avatar, Timeline, Tabs, Alert
 } from 'antd';
 import {
   ThunderboltOutlined, CheckOutlined, CloseOutlined, ReloadOutlined,
   ClockCircleOutlined, SendOutlined, CalendarOutlined, TeamOutlined,
-  WarningOutlined, ExclamationCircleOutlined, FileTextOutlined
+  WarningOutlined, ExclamationCircleOutlined, FileTextOutlined, SafetyOutlined
 } from '@ant-design/icons';
 import { useAppStore } from '../store/appStore';
 import type { ProductionSchedule, AdjustRequest } from '../types';
@@ -15,6 +15,15 @@ import dayjs from 'dayjs';
 const { RangePicker } = DatePicker;
 const { Step } = Steps;
 const { TabPane } = Tabs;
+
+const roleText: any = {
+  admin: '系统管理员',
+  production_director: '生产总监',
+  qa: 'QA质量保证',
+  production_supervisor: '生产主管',
+  operator: '操作员',
+  maintenance: '设备维修'
+};
 
 const ProductionScheduling: React.FC = () => {
   const { message: msg } = App.useApp();
@@ -30,6 +39,31 @@ const ProductionScheduling: React.FC = () => {
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [pendingAdjust, setPendingAdjust] = useState<AdjustRequest | null>(null);
   const [rejectForm] = Form.useForm();
+  const [signatureModalOpen, setSignatureModalOpen] = useState(false);
+  const [signaturePassword, setSignaturePassword] = useState('');
+  const [signatureAction, setSignatureAction] = useState<(() => void) | null>(null);
+  const [signatureTitle, setSignatureTitle] = useState('');
+  const [pendingApproveId, setPendingApproveId] = useState<string | null>(null);
+  const [pendingApproved, setPendingApproved] = useState<boolean>(true);
+  const [pendingPublishId, setPendingPublishId] = useState<string | null>(null);
+
+  const requireSignature = (title: string, action: () => void) => {
+    setSignatureTitle(title);
+    setSignatureAction(() => action);
+    setSignaturePassword('');
+    setSignatureModalOpen(true);
+  };
+
+  const confirmSignature = () => {
+    if (signaturePassword !== 'gmp123') {
+      msg.error('签名口令错误，默认口令: gmp123');
+      return;
+    }
+    if (signatureAction) signatureAction();
+    setSignatureModalOpen(false);
+    setSignaturePassword('');
+    setSignatureAction(null);
+  };
 
   const handleGenerate = () => {
     const newSchedules = generateSchedules(selectedDate);
@@ -41,26 +75,21 @@ const ProductionScheduling: React.FC = () => {
   };
 
   const handleApprove = (id: string, approved: boolean) => {
-    Modal.confirm({
-      title: approved ? '确认审批通过？' : '确认驳回排程？',
-      okText: approved ? '通过' : '驳回',
-      cancelText: '取消',
-      okButtonProps: approved ? { type: 'primary' } : { danger: true },
-      onOk: () => {
-        updateScheduleStatus(id, approved ? 'approved' : 'rejected', currentUser.name, approved ? '审批通过' : '排程不符合要求');
-        msg.success(approved ? '审批通过' : '已驳回');
-      }
+    setPendingApproveId(id);
+    setPendingApproved(approved);
+    requireSignature(approved ? '排程审批通过电子签名' : '排程驳回电子签名', () => {
+      updateScheduleStatus(id, approved ? 'approved' : 'rejected', currentUser.name, approved ? '审批通过' : '排程不符合要求');
+      msg.success(approved ? '审批通过' : '已驳回');
+      setPendingApproveId(null);
     });
   };
 
   const handlePublish = (id: string) => {
-    Modal.confirm({
-      title: '确认发布排程？',
-      okText: '发布',
-      onOk: () => {
-        updateScheduleStatus(id, 'published', currentUser.name);
-        msg.success('排程已发布至工段终端');
-      }
+    setPendingPublishId(id);
+    requireSignature('排程发布电子签名', () => {
+      updateScheduleStatus(id, 'published', currentUser.name);
+      msg.success('排程已发布至工段终端');
+      setPendingPublishId(null);
     });
   };
 
@@ -473,6 +502,39 @@ const ProductionScheduling: React.FC = () => {
         <Form form={rejectForm} layout="vertical">
           <Form.Item name="comment" label="驳回原因" rules={[{ required: true, message: '请输入驳回原因' }]}>
             <Input.TextArea rows={4} placeholder="请输入驳回意见，操作员将看到此信息..." />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Electronic Signature Modal */}
+      <Modal
+        title={`电子签名 - ${signatureTitle}`}
+        open={signatureModalOpen}
+        onCancel={() => setSignatureModalOpen(false)}
+        onOk={confirmSignature}
+        okText="确认签名"
+        okButtonProps={{ icon: <SafetyOutlined />, type: 'primary' }}
+      >
+        <Alert
+          type="warning"
+          showIcon
+          message="GMP电子签名要求"
+          description="此操作将生成具有法律效应的电子签名，请确认您是当前登录用户并对操作内容负责。默认签名口令: gmp123"
+          style={{ marginBottom: 16 }}
+        />
+        <Descriptions bordered size="small" column={1} style={{ marginBottom: 16 }}>
+          <Descriptions.Item label="签名人">{currentUser.name}</Descriptions.Item>
+          <Descriptions.Item label="角色">{roleText[currentUser.role] || currentUser.role}</Descriptions.Item>
+          <Descriptions.Item label="签名时间">{dayjs().format('YYYY-MM-DD HH:mm:ss')}</Descriptions.Item>
+        </Descriptions>
+        <Form layout="vertical">
+          <Form.Item label="签名口令" required>
+            <Input.Password
+              value={signaturePassword}
+              onChange={(e) => setSignaturePassword(e.target.value)}
+              placeholder="请输入签名口令"
+              onPressEnter={confirmSignature}
+            />
           </Form.Item>
         </Form>
       </Modal>

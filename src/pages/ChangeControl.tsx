@@ -22,6 +22,15 @@ const decisionText: any = {
   additional_info: { color: 'orange', text: '需要补充信息' }
 };
 
+const roleText: any = {
+  admin: '系统管理员',
+  production_director: '生产总监',
+  qa: 'QA质量保证',
+  production_supervisor: '生产主管',
+  operator: '操作员',
+  maintenance: '设备维修'
+};
+
 const ChangeControlPage: React.FC = () => {
   const { message: msg } = App.useApp();
   const { changes, products, addChange, updateChange, currentUser } = useAppStore();
@@ -34,6 +43,28 @@ const ChangeControlPage: React.FC = () => {
   const [isEditingImpact, setIsEditingImpact] = useState(false);
   const [editImpactForm] = Form.useForm();
   const [additionalNote, setAdditionalNote] = useState('');
+  const [signatureModalOpen, setSignatureModalOpen] = useState(false);
+  const [signaturePassword, setSignaturePassword] = useState('');
+  const [signatureAction, setSignatureAction] = useState<(() => void) | null>(null);
+  const [signatureTitle, setSignatureTitle] = useState('');
+
+  const requireSignature = (title: string, action: () => void) => {
+    setSignatureTitle(title);
+    setSignatureAction(() => action);
+    setSignaturePassword('');
+    setSignatureModalOpen(true);
+  };
+
+  const confirmSignature = () => {
+    if (signaturePassword !== 'gmp123') {
+      msg.error('签名口令错误，默认口令: gmp123');
+      return;
+    }
+    if (signatureAction) signatureAction();
+    setSignatureModalOpen(false);
+    setSignaturePassword('');
+    setSignatureAction(null);
+  };
 
   const changeStatusFlow = ['draft', 'submitted', 'assessing', 'qa_review', 'approved', 'implemented', 'closed'];
   const changeStatusText: any = { draft: '草稿', submitted: '已提交', assessing: '评估中', qa_review: 'QA审核', approved: '已批准', rejected: '已驳回', implemented: '已实施', closed: '已关闭' };
@@ -85,38 +116,42 @@ const ChangeControlPage: React.FC = () => {
       msg.warning('请填写QA审核意见');
       return;
     }
-    const now = dayjs().format('YYYY-MM-DD HH:mm:ss');
-    const record: AuditRecord = {
-      id: 'qa_' + Date.now(),
-      time: now,
-      reviewer: currentUser.name,
-      decision: qaDecision,
-      comment: qaComment
-    };
-    const newHistory = [...(selectedChange.qaReviewHistory || []), record];
-    let nextStatus: ChangeControl['status'] = 'approved';
-    if (qaDecision === 'approved') nextStatus = 'approved';
-    else if (qaDecision === 'rejected') nextStatus = 'rejected';
-    else if (qaDecision === 'additional_info') nextStatus = 'assessing';
-    const updated = {
-      ...selectedChange,
-      status: nextStatus,
-      qaDecision,
-      qaComment,
-      qaApprover: currentUser.name,
-      qaReviewHistory: newHistory
-    };
-    updateChange(selectedChange.id, {
-      status: nextStatus,
-      qaDecision,
-      qaComment,
-      qaApprover: currentUser.name,
-      qaReviewHistory: newHistory
+    requireSignature('变更QA审批电子签名', () => {
+      const now = dayjs().format('YYYY-MM-DD HH:mm:ss');
+      const record: AuditRecord = {
+        id: 'qa_' + Date.now(),
+        time: now,
+        reviewer: currentUser.name,
+        role: currentUser.role,
+        decision: qaDecision,
+        comment: qaComment,
+        signatureVerified: true
+      };
+      const newHistory = [...(selectedChange.qaReviewHistory || []), record];
+      let nextStatus: ChangeControl['status'] = 'approved';
+      if (qaDecision === 'approved') nextStatus = 'approved';
+      else if (qaDecision === 'rejected') nextStatus = 'rejected';
+      else if (qaDecision === 'additional_info') nextStatus = 'assessing';
+      const updated = {
+        ...selectedChange,
+        status: nextStatus,
+        qaDecision,
+        qaComment,
+        qaApprover: currentUser.name,
+        qaReviewHistory: newHistory
+      };
+      updateChange(selectedChange.id, {
+        status: nextStatus,
+        qaDecision,
+        qaComment,
+        qaApprover: currentUser.name,
+        qaReviewHistory: newHistory
+      });
+      setSelectedChange(updated);
+      if (qaDecision === 'approved') msg.success('变更已批准');
+      else if (qaDecision === 'rejected') msg.success('变更已驳回');
+      else msg.success('已退回补充资料');
     });
-    setSelectedChange(updated);
-    if (qaDecision === 'approved') msg.success('变更已批准');
-    else if (qaDecision === 'rejected') msg.success('变更已驳回');
-    else msg.success('已退回补充资料');
   };
 
   const changeColumns = [
@@ -298,10 +333,12 @@ const ChangeControlPage: React.FC = () => {
                         key={rec.id}
                         color={dec?.color || 'blue'}
                       >
-                        <Space>
+                        <Space wrap>
                           <strong>{rec.time}</strong>
                           <Tag color={dec?.color || 'blue'}>{dec?.text || rec.decision}</Tag>
                           <span>审核人: {rec.reviewer}</span>
+                          {rec.role && <Tag color="purple">{roleText[rec.role] || rec.role}</Tag>}
+                          {rec.signatureVerified && <Tag color="green" icon={<SafetyOutlined />}>电子签名已验证</Tag>}
                         </Space>
                         <div style={{ marginTop: 4, color: '#595959' }}>
                           {rec.comment || '无审核意见'}
@@ -468,6 +505,39 @@ const ChangeControlPage: React.FC = () => {
             </Card>
           </div>
         )}
+      </Modal>
+
+      {/* Electronic Signature Modal */}
+      <Modal
+        title={`电子签名 - ${signatureTitle}`}
+        open={signatureModalOpen}
+        onCancel={() => setSignatureModalOpen(false)}
+        onOk={confirmSignature}
+        okText="确认签名"
+        okButtonProps={{ icon: <SafetyOutlined />, type: 'primary' }}
+      >
+        <Alert
+          type="warning"
+          showIcon
+          message="GMP电子签名要求"
+          description="此操作将生成具有法律效应的电子签名，请确认您是当前登录用户并对操作内容负责。默认签名口令: gmp123"
+          style={{ marginBottom: 16 }}
+        />
+        <Descriptions bordered size="small" column={1} style={{ marginBottom: 16 }}>
+          <Descriptions.Item label="签名人">{currentUser.name}</Descriptions.Item>
+          <Descriptions.Item label="角色">{roleText[currentUser.role] || currentUser.role}</Descriptions.Item>
+          <Descriptions.Item label="签名时间">{dayjs().format('YYYY-MM-DD HH:mm:ss')}</Descriptions.Item>
+        </Descriptions>
+        <Form layout="vertical">
+          <Form.Item label="签名口令" required>
+            <Input.Password
+              value={signaturePassword}
+              onChange={(e) => setSignaturePassword(e.target.value)}
+              placeholder="请输入签名口令"
+              onPressEnter={confirmSignature}
+            />
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   );
