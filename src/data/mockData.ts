@@ -351,7 +351,8 @@ export const mockDeviations: Deviation[] = [
     status: 'investigating',
     reporter: '李操作员',
     reportTime: dayjs().subtract(1, 'hour').format('YYYY-MM-DD HH:mm:ss'),
-    investigation: '正在调查压片压力设置及颗粒含水量情况'
+    investigation: '正在调查压片压力设置及颗粒含水量情况',
+    qaReviewHistory: []
   },
   {
     id: 'dev-2',
@@ -364,7 +365,8 @@ export const mockDeviations: Deviation[] = [
     reportTime: dayjs().subtract(2, 'day').format('YYYY-MM-DD HH:mm:ss'),
     investigation: '已联系供应商进行复检，确认是否为检测误差',
     correctiveAction: '暂停使用该批次原料，等待复检结果',
-    preventiveAction: '加强进厂检验环节，增加取样量'
+    preventiveAction: '加强进厂检验环节，增加取样量',
+    qaReviewHistory: []
   }
 ];
 
@@ -413,7 +415,8 @@ export const mockChanges: ChangeControl[] = [
       documentAffected: ['物料质量标准', '批生产记录'],
       validationRequired: true,
       stabilityRequired: true
-    }
+    },
+    qaReviewHistory: []
   }
 ];
 

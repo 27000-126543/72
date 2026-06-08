@@ -184,6 +184,7 @@ export interface Deviation {
   qaDecision?: 'approved' | 'rejected' | 'additional_info';
   qaComment?: string;
   closedTime?: string;
+  qaReviewHistory: AuditRecord[];
 }
 
 export interface MaintenanceWorkOrder {
@@ -200,6 +201,14 @@ export interface MaintenanceWorkOrder {
   completedDate?: string;
   verificationResult?: string;
   relatedValidation?: string;
+}
+
+export interface AuditRecord {
+  id: string;
+  time: string;
+  reviewer: string;
+  decision: string;
+  comment: string;
 }
 
 export interface ChangeControl {
@@ -222,6 +231,10 @@ export interface ChangeControl {
   approver?: string;
   implementationDate?: string;
   closedDate?: string;
+  qaDecision?: 'approved' | 'rejected' | 'additional_info';
+  qaComment?: string;
+  qaApprover?: string;
+  qaReviewHistory: AuditRecord[];
 }
 
 export interface StabilityStudy {

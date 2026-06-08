@@ -382,7 +382,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           type: 'minor',
           status: 'reported',
           reporter: s.currentUser.name,
-          reportTime: dayjs().format('YYYY-MM-DD HH:mm:ss')
+          reportTime: dayjs().format('YYYY-MM-DD HH:mm:ss'),
+          qaReviewHistory: []
         };
         updates.deviations = [...s.deviations, newDeviation];
         updates.batches = updates.batches.map((b) =>
@@ -400,7 +401,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       id: uuidv4(),
       deviationNo: `DEV-${dayjs().format('YYYY')}-${String(state.deviations.length + 1).padStart(3, '0')}`,
       status: 'reported',
-      reportTime: dayjs().format('YYYY-MM-DD HH:mm:ss')
+      reportTime: dayjs().format('YYYY-MM-DD HH:mm:ss'),
+      qaReviewHistory: []
     };
     set((s) => ({ deviations: [...s.deviations, newDev] }));
   },
@@ -453,7 +455,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       id: uuidv4(),
       changeNo: `CHG-${dayjs().format('YYYY')}-${String(state.changes.length + 1).padStart(3, '0')}`,
       status: 'draft',
-      createdAt: dayjs().format('YYYY-MM-DD HH:mm:ss')
+      createdAt: dayjs().format('YYYY-MM-DD HH:mm:ss'),
+      qaReviewHistory: []
     };
     set((s) => ({ changes: [...s.changes, newChg] }));
   },
@@ -506,10 +509,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       const releasedBatches = productBatches.filter((b) => b.yield !== undefined);
       const avgYieldNum = releasedBatches.length > 0
         ? releasedBatches.reduce((sum, b) => sum + (b.yield || 0), 0) / releasedBatches.length
-        : 92.0;
+        : 0;
 
       const firstPassCount = releasedBatches.filter((b) => b.firstPassYield === true).length;
-      const fprNum = releasedBatches.length > 0 ? (firstPassCount / releasedBatches.length) * 100 : 89.0;
+      const fprNum = releasedBatches.length > 0 ? (firstPassCount / releasedBatches.length) * 100 : 0;
 
       const batchIds = productBatches.map((b) => b.id);
       const deviationCount = state.deviations.filter((d) => d.batchId && batchIds.includes(d.batchId)).length;
@@ -517,46 +520,30 @@ export const useAppStore = create<AppState>((set, get) => ({
       const productSchedules = state.schedules.filter((s) => s.productId === product.id);
       const lineIds = [...new Set(productSchedules.map((s) => s.lineId))];
       const relatedEquipments = state.equipments.filter((e) => lineIds.includes(e.lineId));
-      const equipUtils = relatedEquipments.length > 0 ? relatedEquipments : state.equipments.slice(0, 3);
-      const avgEquipUtilNum = equipUtils.length > 0
-        ? equipUtils.reduce((sum, e) => sum + Math.min(100, Math.round((e.runningHours / 5000) * 100)), 0) / equipUtils.length
-        : 75.0;
-
-      const displayTotal = totalBatches > 0 ? totalBatches : Math.floor(10 + Math.random() * 20);
+      const targetEquipments = relatedEquipments.length > 0 ? relatedEquipments : state.equipments;
+      const avgEquipUtilNum = targetEquipments.length > 0
+        ? targetEquipments.reduce((sum, e) => sum + Math.min(100, Math.round((e.runningHours / 5000) * 100)), 0) / targetEquipments.length
+        : 0;
 
       return {
         key: product.id,
         productName: product.name,
-        totalBatches: displayTotal,
-        avgYield: (avgYieldNum || 92).toFixed(2),
-        firstPassRate: (fprNum || 89).toFixed(2),
-        deviationCount: deviationCount > 0 ? deviationCount : Math.floor(Math.random() * 4),
-        equipmentUtil: (avgEquipUtilNum || 75).toFixed(1)
+        totalBatches,
+        avgYield: releasedBatches.length > 0 ? avgYieldNum.toFixed(2) : '-',
+        firstPassRate: releasedBatches.length > 0 ? fprNum.toFixed(2) : '-',
+        deviationCount,
+        equipmentUtil: targetEquipments.length > 0 ? avgEquipUtilNum.toFixed(1) : '-'
       };
     });
 
-    if (byProduct.length > 0 && byProduct.every((r) => r.totalBatches === 0)) {
-      const fallbackTotals = [24, 18, 32, 12, 8];
-      const fallbackYields = ['95.60', '94.80', '96.20', '93.50', '92.00'];
-      const fallbackFpr = ['93.20', '91.50', '94.80', '90.00', '88.50'];
-      const fallbackDev = [2, 3, 1, 4, 2];
-      const fallbackEquip = ['82.5', '78.0', '85.3', '72.1', '69.8'];
-      byProduct.forEach((p, i) => {
-        p.totalBatches = fallbackTotals[i % fallbackTotals.length];
-        p.avgYield = fallbackYields[i % fallbackYields.length];
-        p.firstPassRate = fallbackFpr[i % fallbackFpr.length];
-        p.deviationCount = fallbackDev[i % fallbackDev.length];
-        p.equipmentUtil = fallbackEquip[i % fallbackEquip.length];
-      });
-    }
-
+    const productsWithBatches = byProduct.filter((p) => p.totalBatches > 0);
     const totalBatches = byProduct.reduce((a, b) => a + b.totalBatches, 0);
-    const overallAvgYield = byProduct.length > 0
-      ? (byProduct.reduce((a, b) => a + parseFloat(b.avgYield), 0) / byProduct.length).toFixed(2)
-      : '93.50';
-    const overallAvgFirstPassRate = byProduct.length > 0
-      ? (byProduct.reduce((a, b) => a + parseFloat(b.firstPassRate), 0) / byProduct.length).toFixed(2)
-      : '91.50';
+    const overallAvgYield = productsWithBatches.length > 0
+      ? (productsWithBatches.reduce((a, b) => a + parseFloat(b.avgYield), 0) / productsWithBatches.length).toFixed(2)
+      : '0.00';
+    const overallAvgFirstPassRate = productsWithBatches.length > 0
+      ? (productsWithBatches.reduce((a, b) => a + parseFloat(b.firstPassRate), 0) / productsWithBatches.length).toFixed(2)
+      : '0.00';
 
     const deviations = productIdFilter
       ? state.deviations.filter((d) => {
@@ -565,22 +552,38 @@ export const useAppStore = create<AppState>((set, get) => ({
         })
       : state.deviations;
 
-    const minorDeviations = deviations.filter((d) => d.type === 'minor').length || 15;
-    const majorDeviations = deviations.filter((d) => d.type === 'major').length || 8;
-    const criticalDeviations = deviations.filter((d) => d.type === 'critical').length || 2;
+    const minorDeviations = deviations.filter((d) => d.type === 'minor').length;
+    const majorDeviations = deviations.filter((d) => d.type === 'major').length;
+    const criticalDeviations = deviations.filter((d) => d.type === 'critical').length;
     const totalDeviations = minorDeviations + majorDeviations + criticalDeviations;
 
     const allEquipUtils = state.equipments.map((e) => Math.min(100, Math.round((e.runningHours / 5000) * 100)));
-    const filledEquipUtils = allEquipUtils.length > 0 ? allEquipUtils : [82, 75, 88, 70, 91, 68, 79, 85];
+    const filledEquipUtils = allEquipUtils;
     const overallEquipmentUtil = filledEquipUtils.length > 0
       ? (filledEquipUtils.reduce((a, b) => a + b, 0) / filledEquipUtils.length).toFixed(1)
-      : '78.0';
+      : '0.0';
 
-    const months = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
-    const yieldBase = parseFloat(overallAvgYield);
-    const fprBase = parseFloat(overallAvgFirstPassRate);
-    const monthlyYield = months.map((_, i) => (yieldBase + Math.sin(i / 2) * 1.5 - 0.5).toFixed(1));
-    const monthlyFirstPassRate = months.map((_, i) => (fprBase + Math.cos(i / 3) * 2 - 0.8).toFixed(1));
+    const now = dayjs();
+    const monthlyYield: string[] = [];
+    const monthlyFirstPassRate: string[] = [];
+    for (let m = 0; m < 12; m++) {
+      const monthStart = now.month(m).startOf('month');
+      const monthEnd = now.month(m).endOf('month');
+      const monthBatches = state.batches.filter((b) => {
+        if (!b.endTime) return false;
+        const bt = dayjs(b.endTime);
+        return bt.isAfter(monthStart) && bt.isBefore(monthEnd) && b.yield !== undefined;
+      });
+      if (monthBatches.length > 0) {
+        const avgY = monthBatches.reduce((s, b) => s + (b.yield || 0), 0) / monthBatches.length;
+        const fp = monthBatches.filter((b) => b.firstPassYield === true).length / monthBatches.length * 100;
+        monthlyYield.push(avgY.toFixed(1));
+        monthlyFirstPassRate.push(fp.toFixed(1));
+      } else {
+        monthlyYield.push('0.0');
+        monthlyFirstPassRate.push('0.0');
+      }
+    }
 
     return {
       totalBatches,

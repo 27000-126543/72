@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  Tabs, Table, Card, Tag, Button, Modal, Descriptions, Timeline, Form, Input,
+  Tabs, Table, Card, Tag, Button, Modal, Descriptions, Timeline as AntdTimeline, Form, Input,
   Select, InputNumber, Space, Steps, Row, Col, Progress, List, Avatar, Divider,
   message, App, Alert
 } from 'antd';
@@ -10,13 +10,20 @@ import {
   ArrowRightOutlined
 } from '@ant-design/icons';
 import { useAppStore } from '../store/appStore';
-import type { Batch, Deviation } from '../types';
+import type { Batch, Deviation, AuditRecord } from '../types';
 import dayjs from 'dayjs';
 import ReactECharts from 'echarts-for-react';
 
 const { TabPane } = Tabs;
 const { Step } = Steps;
 const { TextArea } = Input;
+const { Item: TimelineItem } = AntdTimeline;
+
+const deviationDecisionMap: any = {
+  approved: { color: 'green', text: '批准' },
+  rejected: { color: 'red', text: '驳回，重新调查' },
+  additional_info: { color: 'orange', text: '需要补充信息' }
+};
 
 const batchStatusFlow: Batch['status'][] = ['scheduled', 'preparing', 'granulating', 'compressing', 'packaging', 'qc_pending', 'released'];
 
@@ -161,6 +168,29 @@ const ProductionProcess: React.FC = () => {
       const map: any = { reported: 'default', investigating: 'blue', corrective_action: 'orange', qa_review: 'purple', approved: 'cyan', closed: 'green' };
       const text: any = { reported: '已报告', investigating: '调查中', corrective_action: 'CAPA中', qa_review: 'QA审核', approved: '已批准', closed: '已关闭' };
       return <Tag color={map[s]}>{text[s]}</Tag>;
+    }},
+    { title: '最新QA意见', key: 'qaComment', render: (_: any, rec: Deviation) => {
+      if (rec.qaComment && rec.qaDecision) {
+        const dec = deviationDecisionMap[rec.qaDecision];
+        return (
+          <Space direction="vertical" size={0}>
+            <Tag color={dec.color}>{dec.text}</Tag>
+            <span style={{ fontSize: 12, color: '#595959' }}>{rec.qaComment}</span>
+          </Space>
+        );
+      }
+      const history = rec.qaReviewHistory && rec.qaReviewHistory.length > 0;
+      if (history) {
+        const last = rec.qaReviewHistory[rec.qaReviewHistory.length - 1];
+        const dec = deviationDecisionMap[last.decision];
+        return (
+          <Space direction="vertical" size={0}>
+            <Tag color={dec?.color || 'default'}>{dec?.text || last.decision}</Tag>
+            <span style={{ fontSize: 12, color: '#595959' }}>{last.comment}</span>
+          </Space>
+        );
+      }
+      return <span style={{ color: '#bfbfbf' }}>暂无</span>;
     }},
     { title: '报告人', dataIndex: 'reporter', key: 'reporter' },
     { title: '报告时间', dataIndex: 'reportTime', key: 'reportTime', width: 160 },
@@ -379,6 +409,42 @@ const ProductionProcess: React.FC = () => {
               </Steps>
             </Card>
 
+            <Card title="QA审核历史记录" size="small" style={{ marginBottom: 16 }}>
+              {selectedDeviation.qaReviewHistory && selectedDeviation.qaReviewHistory.length > 0 ? (
+                <AntdTimeline>
+                  {selectedDeviation.qaReviewHistory.map((rec: AuditRecord) => {
+                    const dec = deviationDecisionMap[rec.decision];
+                    return (
+                      <TimelineItem
+                        key={rec.id}
+                        color={dec?.color || 'blue'}
+                      >
+                        <Space>
+                          <strong>{rec.time}</strong>
+                          <Tag color={dec?.color || 'blue'}>{dec?.text || rec.decision}</Tag>
+                          <span>审核人: {rec.reviewer}</span>
+                        </Space>
+                        <div style={{ marginTop: 4, color: '#595959' }}>
+                          {rec.comment || '无审核意见'}
+                        </div>
+                      </TimelineItem>
+                    );
+                  })}
+                </AntdTimeline>
+              ) : (
+                <span style={{ color: '#bfbfbf' }}>暂无QA审核记录</span>
+              )}
+              {selectedDeviation.status === 'investigating' && selectedDeviation.qaDecision === 'additional_info' && selectedDeviation.qaComment && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="QA要求补充信息"
+                  description={selectedDeviation.qaComment}
+                  style={{ marginTop: 12 }}
+                />
+              )}
+            </Card>
+
             <Card size="small" title="处理操作">
               {selectedDeviation.status === 'reported' && currentUser.role !== 'operator' && (
                 <Space direction="vertical" style={{ width: '100%' }}>
@@ -441,7 +507,25 @@ const ProductionProcess: React.FC = () => {
                     <Button type="primary" icon={<SafetyOutlined />} onClick={() => {
                       if (!selectedDeviation.qaComment) { msg.warning('请填写QA审核意见'); return; }
                       if (!selectedDeviation.qaDecision) { msg.warning('请选择QA审批结论'); return; }
-                      updateDeviationStatus(selectedDeviation, selectedDeviation.qaDecision === 'approved' ? 'approved' : 'investigating', { qaApprover: currentUser.name, qaDecision: selectedDeviation.qaDecision, qaComment: selectedDeviation.qaComment });
+                      const now = dayjs().format('YYYY-MM-DD HH:mm:ss');
+                      const record: AuditRecord = {
+                        id: 'qa_' + Date.now(),
+                        time: now,
+                        reviewer: currentUser.name,
+                        decision: selectedDeviation.qaDecision,
+                        comment: selectedDeviation.qaComment
+                      };
+                      const nextStatus = selectedDeviation.qaDecision === 'approved' ? 'approved' : 'investigating';
+                      const newHistory = [...(selectedDeviation.qaReviewHistory || []), record];
+                      updateDeviationStatus(selectedDeviation, nextStatus, {
+                        qaApprover: currentUser.name,
+                        qaDecision: selectedDeviation.qaDecision,
+                        qaComment: selectedDeviation.qaComment,
+                        qaReviewHistory: newHistory
+                      });
+                      if (selectedDeviation.qaDecision === 'approved') msg.success('QA已批准，可关闭偏差');
+                      else if (selectedDeviation.qaDecision === 'rejected') msg.success('已驳回，返回调查');
+                      else msg.success('已要求补充信息');
                     }}>
                       QA审批{currentUser.role !== 'qa' ? '（模拟）' : ''}
                     </Button>

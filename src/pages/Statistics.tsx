@@ -32,13 +32,13 @@ const Statistics: React.FC = () => {
     tooltip: { trigger: 'axis' },
     legend: { data: ['平均收率', '一次合格率'] },
     xAxis: { type: 'category', data: months },
-    yAxis: { type: 'value', min: 80, max: 100, axisLabel: { formatter: '{value}%' } },
+    yAxis: { type: 'value', min: 0, max: 100, axisLabel: { formatter: '{value}%' } },
     series: [
       {
         name: '平均收率',
         type: 'line',
         smooth: true,
-        data: stats.monthlyYield,
+        data: stats.monthlyYield.map((v) => parseFloat(v) || 0),
         itemStyle: { color: '#1890ff' },
         areaStyle: { color: 'rgba(24,144,255,0.2)' }
       },
@@ -46,7 +46,7 @@ const Statistics: React.FC = () => {
         name: '一次合格率',
         type: 'line',
         smooth: true,
-        data: stats.monthlyFirstPassRate,
+        data: stats.monthlyFirstPassRate.map((v) => parseFloat(v) || 0),
         itemStyle: { color: '#52c41a' },
         areaStyle: { color: 'rgba(82,196,26,0.2)' }
       }
@@ -124,7 +124,7 @@ const Statistics: React.FC = () => {
     autoTable(doc, {
       startY: y,
       head: [['产品名称', '总批次', '平均收率(%)', '一次合格率(%)', '偏差数', '设备利用率(%)']],
-      body: statData.map((s) => [s.productName, s.totalBatches, s.avgYield, s.firstPassRate, s.deviationCount, s.equipmentUtil]),
+      body: statData.map((s) => [s.productName, s.totalBatches, s.avgYield === '-' ? 'N/A' : s.avgYield, s.firstPassRate === '-' ? 'N/A' : s.firstPassRate, s.deviationCount, s.equipmentUtil === '-' ? 'N/A' : s.equipmentUtil]),
       headStyles: { fillColor: [24, 144, 255] }
     });
 
@@ -146,10 +146,18 @@ const Statistics: React.FC = () => {
   const statColumns = [
     { title: '产品名称', dataIndex: 'productName', key: 'productName' },
     { title: '总批次', dataIndex: 'totalBatches', key: 'totalBatches', sorter: (a: any, b: any) => a.totalBatches - b.totalBatches },
-    { title: '平均收率(%)', dataIndex: 'avgYield', key: 'avgYield', render: (v: string) => <span className={parseFloat(v) >= 95 ? 'parameter-normal' : parseFloat(v) >= 90 ? 'parameter-warning' : 'parameter-danger'} style={{ fontWeight: 600 }}>{v}</span> },
-    { title: '一次合格率(%)', dataIndex: 'firstPassRate', key: 'firstPassRate', render: (v: string) => <span className={parseFloat(v) >= 95 ? 'parameter-normal' : parseFloat(v) >= 90 ? 'parameter-warning' : 'parameter-danger'} style={{ fontWeight: 600 }}>{v}</span> },
+    { title: '平均收率(%)', dataIndex: 'avgYield', key: 'avgYield', render: (v: string) => {
+      if (v === '-') return <Tag color="default">无数据</Tag>;
+      const num = parseFloat(v);
+      return <span className={num >= 95 ? 'parameter-normal' : num >= 90 ? 'parameter-warning' : 'parameter-danger'} style={{ fontWeight: 600 }}>{v}</span>;
+    }},
+    { title: '一次合格率(%)', dataIndex: 'firstPassRate', key: 'firstPassRate', render: (v: string) => {
+      if (v === '-') return <Tag color="default">无数据</Tag>;
+      const num = parseFloat(v);
+      return <span className={num >= 95 ? 'parameter-normal' : num >= 90 ? 'parameter-warning' : 'parameter-danger'} style={{ fontWeight: 600 }}>{v}</span>;
+    }},
     { title: '偏差次数', dataIndex: 'deviationCount', key: 'deviationCount', render: (v: number) => v > 3 ? <Tag color="red">{v}</Tag> : v > 0 ? <Tag color="orange">{v}</Tag> : <Tag color="green">{v}</Tag> },
-    { title: '设备利用率(%)', dataIndex: 'equipmentUtil', key: 'equipmentUtil', render: (v: string) => <Progress percent={parseFloat(v)} size="small" /> }
+    { title: '设备利用率(%)', dataIndex: 'equipmentUtil', key: 'equipmentUtil', render: (v: string) => v === '-' ? <Tag color="default">无数据</Tag> : <Progress percent={parseFloat(v) || 0} size="small" /> }
   ];
 
   return (

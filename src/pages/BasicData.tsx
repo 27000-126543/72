@@ -88,16 +88,24 @@ const BasicData: React.FC = () => {
   const submitProduct = async () => {
     const values = await productForm.validateFields();
     if (editingProduct) {
-      updateProduct(editingProduct.id, values);
-      if (tempBatches.length > 0 && !editingProduct.batchList) {
-        tempBatches.forEach((b) => addProductBatch(editingProduct.id, b));
-      }
-      if (tempMaterials.length > 0) {
-        updateProductMaterialList(editingProduct.id, tempMaterials);
-      }
+      const releasedBatch = tempBatches.find((b) => b.status === 'released');
+      updateProduct(editingProduct.id, {
+        ...values,
+        batchList: tempBatches,
+        materialList: tempMaterials,
+        lastBatch: releasedBatch?.batchNo,
+        lastProductionDate: releasedBatch?.productionDate
+      });
       message.success('产品更新成功');
     } else {
-      const productId = addProduct({ ...values, batchList: tempBatches, materialList: tempMaterials });
+      const releasedBatch = tempBatches.find((b) => b.status === 'released');
+      addProduct({
+        ...values,
+        batchList: tempBatches,
+        materialList: tempMaterials,
+        lastBatch: releasedBatch?.batchNo,
+        lastProductionDate: releasedBatch?.productionDate
+      });
       message.success('产品添加成功');
     }
     setProductModalOpen(false);

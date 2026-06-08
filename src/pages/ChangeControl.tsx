@@ -2,19 +2,25 @@ import { useState } from 'react';
 import {
   Tabs, Table, Card, Tag, Button, Modal, Descriptions, Space, Steps,
   Form, Input, Select, DatePicker, Checkbox, Row, Col, List, Avatar,
-  message, App, Alert, Progress, Divider
+  message, App, Alert, Progress, Divider, Timeline
 } from 'antd';
 import {
   FileProtectOutlined, PlusOutlined, EditOutlined, CheckCircleOutlined,
-  ExperimentOutlined, BellOutlined, SafetyOutlined
+  ExperimentOutlined, BellOutlined, SafetyOutlined, StopOutlined, InfoCircleOutlined
 } from '@ant-design/icons';
 import { useAppStore } from '../store/appStore';
-import type { ChangeControl, StabilityStudy } from '../types';
+import type { ChangeControl, StabilityStudy, AuditRecord } from '../types';
 import dayjs from 'dayjs';
 
 const { TabPane } = Tabs;
 const { Step } = Steps;
 const { TextArea } = Input;
+
+const decisionText: any = {
+  approved: { color: 'green', text: '批准' },
+  rejected: { color: 'red', text: '驳回' },
+  additional_info: { color: 'orange', text: '需要补充信息' }
+};
 
 const ChangeControlPage: React.FC = () => {
   const { message: msg } = App.useApp();
@@ -23,6 +29,8 @@ const ChangeControlPage: React.FC = () => {
   const [selectedChange, setSelectedChange] = useState<ChangeControl | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createForm] = Form.useForm();
+  const [qaDecision, setQaDecision] = useState<'approved' | 'rejected' | 'additional_info'>('approved');
+  const [qaComment, setQaComment] = useState('');
 
   const changeStatusFlow = ['draft', 'submitted', 'assessing', 'qa_review', 'approved', 'implemented', 'closed'];
   const changeStatusText: any = { draft: '草稿', submitted: '已提交', assessing: '评估中', qa_review: 'QA审核', approved: '已批准', rejected: '已驳回', implemented: '已实施', closed: '已关闭' };
@@ -30,6 +38,8 @@ const ChangeControlPage: React.FC = () => {
 
   const openDetail = (chg: ChangeControl) => {
     setSelectedChange(chg);
+    setQaDecision(chg.qaDecision || 'approved');
+    setQaComment(chg.qaComment || '');
     setDetailModalOpen(true);
   };
 
@@ -57,6 +67,46 @@ const ChangeControlPage: React.FC = () => {
     msg.success('状态已更新');
   };
 
+  const qaSubmit = () => {
+    if (!selectedChange) return;
+    if (qaComment.trim() === '') {
+      msg.warning('请填写QA审核意见');
+      return;
+    }
+    const now = dayjs().format('YYYY-MM-DD HH:mm:ss');
+    const record: AuditRecord = {
+      id: 'qa_' + Date.now(),
+      time: now,
+      reviewer: currentUser.name,
+      decision: qaDecision,
+      comment: qaComment
+    };
+    const newHistory = [...(selectedChange.qaReviewHistory || []), record];
+    let nextStatus: ChangeControl['status'] = 'approved';
+    if (qaDecision === 'approved') nextStatus = 'approved';
+    else if (qaDecision === 'rejected') nextStatus = 'rejected';
+    else if (qaDecision === 'additional_info') nextStatus = 'assessing';
+    const updated = {
+      ...selectedChange,
+      status: nextStatus,
+      qaDecision,
+      qaComment,
+      qaApprover: currentUser.name,
+      qaReviewHistory: newHistory
+    };
+    updateChange(selectedChange.id, {
+      status: nextStatus,
+      qaDecision,
+      qaComment,
+      qaApprover: currentUser.name,
+      qaReviewHistory: newHistory
+    });
+    setSelectedChange(updated);
+    if (qaDecision === 'approved') msg.success('变更已批准');
+    else if (qaDecision === 'rejected') msg.success('变更已驳回');
+    else msg.success('已退回补充资料');
+  };
+
   const changeColumns = [
     { title: '变更编号', dataIndex: 'changeNo', key: 'changeNo', width: 150 },
     { title: '标题', dataIndex: 'title', key: 'title' },
@@ -64,6 +114,20 @@ const ChangeControlPage: React.FC = () => {
     { title: '状态', dataIndex: 'status', key: 'status', render: (s: string) => <Tag color={changeStatusColor[s]}>{changeStatusText[s]}</Tag> },
     { title: '发起人', dataIndex: 'initiator', key: 'initiator' },
     { title: '创建时间', dataIndex: 'createdAt', key: 'createdAt', width: 160 },
+    { title: '最新QA意见', key: 'qa', render: (_: any, rec: ChangeControl) => {
+      if (!rec.qaComment && (!rec.qaReviewHistory || rec.qaReviewHistory.length === 0)) return <span style={{ color: '#bfbfbf' }}>暂无</span>;
+      if (rec.qaDecision) {
+        const dec = decisionText[rec.qaDecision];
+        return (
+          <Space direction="vertical" size={0}>
+            <Tag color={dec.color}>{dec.text}</Tag>
+            <span style={{ fontSize: 12, color: '#595959' }}>{rec.qaComment || '无意见'}</span>
+          </Space>
+        );
+      }
+      const last = rec.qaReviewHistory[rec.qaReviewHistory.length - 1];
+      return <span style={{ fontSize: 12, color: '#595959' }}>{last?.comment || '无意见'}</span>;
+    }},
     { title: '影响评估', key: 'impact', render: (_: any, rec: ChangeControl) => (
       <Space>
         {rec.impactAssessment.validationRequired && <Tag color="red">需验证</Tag>}
@@ -212,6 +276,42 @@ const ChangeControlPage: React.FC = () => {
               </Row>
             </Card>
 
+            <Card size="small" title="QA审核历史记录" style={{ marginBottom: 16 }}>
+              {selectedChange.qaReviewHistory && selectedChange.qaReviewHistory.length > 0 ? (
+                <Timeline>
+                  {selectedChange.qaReviewHistory.map((rec: AuditRecord) => {
+                    const dec = decisionText[rec.decision];
+                    return (
+                      <Timeline.Item
+                        key={rec.id}
+                        color={dec?.color || 'blue'}
+                      >
+                        <Space>
+                          <strong>{rec.time}</strong>
+                          <Tag color={dec?.color || 'blue'}>{dec?.text || rec.decision}</Tag>
+                          <span>审核人: {rec.reviewer}</span>
+                        </Space>
+                        <div style={{ marginTop: 4, color: '#595959' }}>
+                          {rec.comment || '无审核意见'}
+                        </div>
+                      </Timeline.Item>
+                    );
+                  })}
+                </Timeline>
+              ) : (
+                <span style={{ color: '#bfbfbf' }}>暂无QA审核记录</span>
+              )}
+              {selectedChange.status === 'rejected' && selectedChange.qaComment && (
+                <Alert
+                  type="error"
+                  showIcon
+                  message="驳回原因"
+                  description={selectedChange.qaComment}
+                  style={{ marginTop: 12 }}
+                />
+              )}
+            </Card>
+
             <Card size="small" title="操作">
               <Space direction="vertical" style={{ width: '100%' }}>
                 <Space wrap>
@@ -231,12 +331,20 @@ const ChangeControlPage: React.FC = () => {
                       ) : (
                         <Alert type="success" showIcon message="您当前为QA角色，可执行变更审批" />
                       )}
+                      <Divider orientation="left" style={{ margin: '8px 0' }}>QA审核</Divider>
+                      <Form.Item label="审批结论" required>
+                        <Select value={qaDecision} onChange={(v: any) => setQaDecision(v)} style={{ width: 280 }}>
+                          <Select.Option value="approved">批准变更</Select.Option>
+                          <Select.Option value="rejected">驳回变更</Select.Option>
+                          <Select.Option value="additional_info">需要补充信息（退回评估）</Select.Option>
+                        </Select>
+                      </Form.Item>
+                      <Form.Item label="审核意见" required>
+                        <TextArea rows={3} value={qaComment} onChange={(e) => setQaComment(e.target.value)} placeholder="请详细填写审核意见（必填）..." />
+                      </Form.Item>
                       <Space>
-                        <Button type="primary" icon={<SafetyOutlined />} onClick={() => updateChangeStatus(selectedChange, 'approved')}>
-                          批准变更{currentUser.role !== 'qa' ? '（模拟）' : ''}
-                        </Button>
-                        <Button danger onClick={() => updateChangeStatus(selectedChange, 'rejected')}>
-                          驳回变更{currentUser.role !== 'qa' ? '（模拟）' : ''}
+                        <Button type="primary" icon={<SafetyOutlined />} onClick={qaSubmit}>
+                          提交审批{currentUser.role !== 'qa' ? '（模拟）' : ''}
                         </Button>
                       </Space>
                     </Space>
