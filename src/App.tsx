@@ -1,5 +1,5 @@
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Avatar, Dropdown, Space, Badge } from 'antd';
+import { Layout, Menu, Avatar, Dropdown, Space, Badge, Select, Tag, message } from 'antd';
 import {
   DashboardOutlined,
   AppstoreOutlined,
@@ -13,7 +13,8 @@ import {
   UserOutlined,
   BellOutlined,
   LogoutOutlined,
-  SettingOutlined
+  SettingOutlined,
+  SwapOutlined
 } from '@ant-design/icons';
 import Dashboard from './pages/Dashboard';
 import BasicData from './pages/BasicData';
@@ -40,10 +41,19 @@ const menuItems = [
   { key: '/visualization', icon: <MonitorOutlined />, label: '车间可视化' }
 ];
 
+const roleLabelMap: any = {
+  admin: '系统管理员',
+  production_director: '生产总监',
+  qa: 'QA质量保证',
+  production_supervisor: '生产主管',
+  operator: '操作员',
+  maintenance: '设备维修'
+};
+
 function App() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentUser, deviations, maintenanceOrders, stabilityStudies } = useAppStore();
+  const { currentUser, users, deviations, maintenanceOrders, stabilityStudies, adjustRequests, setCurrentUser } = useAppStore();
 
   const pendingDeviations = deviations.filter((d) => d.status !== 'closed').length;
   const pendingMaintenance = maintenanceOrders.filter((m) => m.status === 'pending' || m.status === 'in_progress').length;
@@ -51,8 +61,17 @@ function App() {
     const diff = new Date(s.nextSamplingDate).getTime() - new Date().getTime();
     return diff > 0 && diff < 7 * 24 * 60 * 60 * 1000;
   }).length;
+  const pendingAdjustments = adjustRequests.filter((r) => r.status === 'pending').length;
 
-  const notificationCount = pendingDeviations + pendingMaintenance + upcomingSampling;
+  const notificationCount = pendingDeviations + pendingMaintenance + upcomingSampling + pendingAdjustments;
+
+  const handleRoleChange = (userId: string) => {
+    const user = users.find((u) => u.id === userId);
+    if (user) {
+      setCurrentUser(user);
+      message.success(`已切换到：${user.name}（${roleLabelMap[user.role]}）`);
+    }
+  };
 
   const userDropdownItems = [
     { key: 'profile', icon: <UserOutlined />, label: `${currentUser.name} - ${currentUser.department}` },
@@ -63,7 +82,7 @@ function App() {
 
   return (
     <Layout className="app-layout">
-      <Sider width={220} theme="dark">
+      <Sider width={230} theme="dark">
         <div style={{ padding: '16px', textAlign: 'center', color: '#fff', fontWeight: 600, fontSize: 16, borderBottom: '1px solid #1f1f1f' }}>
           💊 GMP制药质量管理
         </div>
@@ -92,7 +111,28 @@ function App() {
           <div style={{ fontSize: 16, fontWeight: 500, color: '#262626' }}>
             {menuItems.find((m) => m.key === location.pathname)?.label || 'GMP制药生产与质量管理系统'}
           </div>
-          <Space size={24}>
+          <Space size={16}>
+            <Space>
+              <SwapOutlined style={{ color: '#595959' }} />
+              <span style={{ color: '#595959', fontSize: 13 }}>角色切换:</span>
+              <Select
+                value={currentUser.id}
+                onChange={handleRoleChange}
+                style={{ width: 200 }}
+                size="small"
+                optionLabelProp="label"
+              >
+                {users.map((u) => (
+                  <Select.Option key={u.id} value={u.id} label={`${u.name} - ${roleLabelMap[u.role]}`}>
+                    <Space>
+                      <span>{u.name}</span>
+                      <Tag color="blue">{roleLabelMap[u.role]}</Tag>
+                      <span style={{ color: '#8c8c8c', fontSize: 12 }}>{u.department}</span>
+                    </Space>
+                  </Select.Option>
+                ))}
+              </Select>
+            </Space>
             <Badge count={notificationCount} size="small">
               <BellOutlined style={{ fontSize: 18, color: '#595959', cursor: 'pointer' }} />
             </Badge>
@@ -100,6 +140,9 @@ function App() {
               <Space style={{ cursor: 'pointer' }}>
                 <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#1890ff' }} />
                 <span>{currentUser.name}</span>
+                <Tag color={currentUser.role === 'qa' ? 'purple' : currentUser.role === 'production_director' ? 'blue' : 'default'}>
+                  {roleLabelMap[currentUser.role]}
+                </Tag>
               </Space>
             </Dropdown>
           </Space>

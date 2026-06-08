@@ -7,7 +7,36 @@ export type ScheduleStatus = 'draft' | 'pending_approval' | 'approved' | 'reject
 export type MaintenanceStatus = 'pending' | 'in_progress' | 'completed' | 'verified';
 export type ChangeStatus = 'draft' | 'submitted' | 'assessing' | 'qa_review' | 'approved' | 'rejected' | 'implemented' | 'closed';
 export type StabilityStatus = 'planned' | 'in_progress' | 'completed' | 'expired';
-export type WorkStationStatus = 'pending' | 'accepted' | 'in_progress' | 'completed' | 'adjust_requested';
+export type WorkStationStatus = 'pending' | 'accepted' | 'in_progress' | 'completed' | 'adjust_requested' | 'adjust_approved' | 'adjust_rejected';
+
+export interface ProductBatch {
+  id: string;
+  batchNo: string;
+  productionDate?: string;
+  expiryDate?: string;
+  quantity?: number;
+  status?: 'producing' | 'qc' | 'released' | 'expired';
+}
+
+export interface ProductMaterial {
+  materialId: string;
+  materialName: string;
+  dosagePerUnit: number;
+  unit: string;
+}
+
+export interface AdjustRequest {
+  id: string;
+  scheduleId: string;
+  station: string;
+  reason: string;
+  requester: string;
+  requestTime: string;
+  status: 'pending' | 'approved' | 'rejected';
+  approver?: string;
+  approveComment?: string;
+  approveTime?: string;
+}
 
 export interface ProductionLine {
   id: string;
@@ -33,6 +62,8 @@ export interface Product {
   shelfLife: number;
   lastBatch?: string;
   lastProductionDate?: string;
+  batchList?: ProductBatch[];
+  materialList?: ProductMaterial[];
 }
 
 export interface Material {
@@ -84,7 +115,10 @@ export interface ProductionSchedule {
   lineCode: string;
   productId: string;
   productName: string;
+  productBatch?: string;
   batchNo: string;
+  salesOrderId?: string;
+  salesOrderNo?: string;
   plannedQuantity: number;
   startTime: string;
   endTime: string;
@@ -98,6 +132,7 @@ export interface ProductionSchedule {
   createdAt: string;
   createdBy: string;
   workstationStatus?: { [key: string]: WorkStationStatus };
+  adjustRequests?: AdjustRequest[];
 }
 
 export interface Batch {
@@ -222,4 +257,31 @@ export interface StatisticsData {
   deviationCount: number;
   equipmentUtilization: { [key: string]: number };
   period: string;
+  avgYield: string;
+  equipmentUtil: string;
+}
+
+export interface OverallStatisticsData {
+  totalBatches: number;
+  overallAvgYield: string;
+  overallAvgFirstPassRate: string;
+  totalDeviations: number;
+  minorDeviations: number;
+  majorDeviations: number;
+  criticalDeviations: number;
+  overallEquipmentUtil: string;
+  equipmentUtilizations: number[];
+  monthlyYield: string[];
+  monthlyFirstPassRate: string[];
+  byProduct: ProductStatRow[];
+}
+
+export interface ProductStatRow {
+  key: string;
+  productName: string;
+  totalBatches: number;
+  avgYield: string;
+  firstPassRate: string;
+  deviationCount: number;
+  equipmentUtil: string;
 }

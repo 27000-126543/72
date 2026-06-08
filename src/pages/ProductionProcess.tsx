@@ -412,23 +412,51 @@ const ProductionProcess: React.FC = () => {
                   </Button>
                 </Space>
               )}
-              {(selectedDeviation.status === 'corrective_action' || selectedDeviation.status === 'qa_review') && currentUser.role === 'qa' && (
+              {(selectedDeviation.status === 'corrective_action' || selectedDeviation.status === 'qa_review') && (
                 <Space direction="vertical" style={{ width: '100%' }}>
+                  {currentUser.role !== 'qa' && (
+                    <Alert
+                      type="warning"
+                      showIcon
+                      message="当前用户不是QA角色"
+                      description={<Space>请点击右上角「角色切换」选择「QA质量保证」角色进行审批，或以当前角色模拟审批。<Button size="small" type="link">当前角色: {currentUser.name}</Button></Space>}
+                      style={{ marginBottom: 12 }}
+                    />
+                  )}
+                  {currentUser.role === 'qa' && (
+                    <Alert
+                      type="success"
+                      showIcon
+                      message="您当前为QA质量保证角色，可执行审批"
+                      style={{ marginBottom: 12 }}
+                    />
+                  )}
                   <Select placeholder="QA审批结论" style={{ width: '100%' }} value={selectedDeviation.qaDecision} onChange={(v) => setSelectedDeviation({ ...selectedDeviation, qaDecision: v })}>
                     <Select.Option value="approved">批准</Select.Option>
                     <Select.Option value="rejected">驳回，重新调查</Select.Option>
                     <Select.Option value="additional_info">需要补充信息</Select.Option>
                   </Select>
-                  <TextArea rows={3} placeholder="QA审核意见..." value={selectedDeviation.qaComment} onChange={(e) => setSelectedDeviation({ ...selectedDeviation, qaComment: e.target.value })} />
-                  <Button type="primary" icon={<SafetyOutlined />} onClick={() => updateDeviationStatus(selectedDeviation, selectedDeviation.qaDecision === 'approved' ? 'approved' : 'investigating', { qaApprover: currentUser.name, qaDecision: selectedDeviation.qaDecision, qaComment: selectedDeviation.qaComment })}>
-                    QA审批
-                  </Button>
+                  <TextArea rows={3} placeholder="QA审核意见（必填）..." value={selectedDeviation.qaComment} onChange={(e) => setSelectedDeviation({ ...selectedDeviation, qaComment: e.target.value })} />
+                  <Space wrap>
+                    <Button type="primary" icon={<SafetyOutlined />} onClick={() => {
+                      if (!selectedDeviation.qaComment) { msg.warning('请填写QA审核意见'); return; }
+                      if (!selectedDeviation.qaDecision) { msg.warning('请选择QA审批结论'); return; }
+                      updateDeviationStatus(selectedDeviation, selectedDeviation.qaDecision === 'approved' ? 'approved' : 'investigating', { qaApprover: currentUser.name, qaDecision: selectedDeviation.qaDecision, qaComment: selectedDeviation.qaComment });
+                    }}>
+                      QA审批{currentUser.role !== 'qa' ? '（模拟）' : ''}
+                    </Button>
+                  </Space>
                 </Space>
               )}
-              {selectedDeviation.status === 'approved' && currentUser.role === 'qa' && (
-                <Button type="primary" icon={<CheckCircleOutlined />} onClick={() => updateDeviationStatus(selectedDeviation, 'closed', { closedTime: dayjs().format('YYYY-MM-DD HH:mm:ss') })}>
-                  关闭偏差
-                </Button>
+              {selectedDeviation.status === 'approved' && (
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  {currentUser.role !== 'qa' && (
+                    <Alert type="warning" showIcon message="建议切换QA角色执行关闭操作" style={{ marginBottom: 12 }} />
+                  )}
+                  <Button type="primary" icon={<CheckCircleOutlined />} onClick={() => updateDeviationStatus(selectedDeviation, 'closed', { closedTime: dayjs().format('YYYY-MM-DD HH:mm:ss') })}>
+                    关闭偏差
+                  </Button>
+                </Space>
               )}
               {selectedDeviation.status === 'closed' && (
                 <Alert message="偏差已关闭" type="success" showIcon />

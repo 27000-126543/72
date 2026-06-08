@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Tabs, Card, Row, Col, Statistic, Select, DatePicker, Button, Table,
   Tag, Space, Progress, message, App, Divider
@@ -18,27 +18,17 @@ const { TabPane } = Tabs;
 
 const Statistics: React.FC = () => {
   const { message: msg } = App.useApp();
-  const { products, batches, deviations, lines, equipments } = useAppStore();
+  const { products, batches, deviations, lines, equipments, computeStatistics } = useAppStore();
   const [selectedProduct, setSelectedProduct] = useState<string>('all');
   const [period, setPeriod] = useState('year');
 
-  // Mock stat data
-  const statData = products.map((p) => {
-    const relevantBatches = batches.filter((b) => b.productId === p.id || true);
-    return {
-      key: p.id,
-      productName: p.name,
-      totalBatches: Math.floor(Math.random() * 30) + 10,
-      avgYield: (90 + Math.random() * 9).toFixed(2),
-      firstPassRate: (85 + Math.random() * 14).toFixed(2),
-      deviationCount: Math.floor(Math.random() * 5),
-      equipmentUtil: (70 + Math.random() * 25).toFixed(1)
-    };
-  });
+  const stats = useMemo(() => computeStatistics(selectedProduct === 'all' ? undefined : selectedProduct), [computeStatistics, selectedProduct, batches, deviations, equipments, products]);
+
+  const statData = stats.byProduct;
 
   const months = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 
-  const yieldOption = {
+  const yieldOption = useMemo(() => ({
     tooltip: { trigger: 'axis' },
     legend: { data: ['平均收率', '一次合格率'] },
     xAxis: { type: 'category', data: months },
@@ -48,7 +38,7 @@ const Statistics: React.FC = () => {
         name: '平均收率',
         type: 'line',
         smooth: true,
-        data: months.map(() => (93 + Math.random() * 5).toFixed(1)),
+        data: stats.monthlyYield,
         itemStyle: { color: '#1890ff' },
         areaStyle: { color: 'rgba(24,144,255,0.2)' }
       },
@@ -56,35 +46,35 @@ const Statistics: React.FC = () => {
         name: '一次合格率',
         type: 'line',
         smooth: true,
-        data: months.map(() => (90 + Math.random() * 8).toFixed(1)),
+        data: stats.monthlyFirstPassRate,
         itemStyle: { color: '#52c41a' },
         areaStyle: { color: 'rgba(82,196,26,0.2)' }
       }
     ]
-  };
+  }), [stats]);
 
-  const deviationOption = {
+  const deviationOption = useMemo(() => ({
     tooltip: { trigger: 'item' },
     legend: { bottom: 0 },
     series: [{
       type: 'pie',
       radius: ['40%', '70%'],
       data: [
-        { value: 15, name: '轻微偏差', itemStyle: { color: '#1890ff' } },
-        { value: 8, name: '主要偏差', itemStyle: { color: '#faad14' } },
-        { value: 2, name: '严重偏差', itemStyle: { color: '#ff4d4f' } }
+        { value: stats.minorDeviations, name: '轻微偏差', itemStyle: { color: '#1890ff' } },
+        { value: stats.majorDeviations, name: '主要偏差', itemStyle: { color: '#faad14' } },
+        { value: stats.criticalDeviations, name: '严重偏差', itemStyle: { color: '#ff4d4f' } }
       ],
       label: { formatter: '{b}: {c} ({d}%)' }
     }]
-  };
+  }), [stats]);
 
-  const equipmentOption = {
+  const equipmentOption = useMemo(() => ({
     tooltip: { trigger: 'axis' },
-    xAxis: { type: 'category', data: equipments.map((e) => e.name.substring(0, 6)) },
+    xAxis: { type: 'category', data: equipments.map((e) => e.name.substring(0, 8)) },
     yAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%' } },
     series: [{
       type: 'bar',
-      data: equipments.map(() => Math.round(60 + Math.random() * 35)),
+      data: stats.equipmentUtilizations,
       itemStyle: {
         color: (params: any) => {
           if (params.value > 85) return '#52c41a';
@@ -95,29 +85,29 @@ const Statistics: React.FC = () => {
       },
       label: { show: true, position: 'top', formatter: '{c}%' }
     }]
-  };
+  }), [stats, equipments]);
 
-  const productBarOption = {
+  const productBarOption = useMemo(() => ({
     tooltip: { trigger: 'axis' },
     legend: { data: ['批次数量', '偏差数'] },
-    xAxis: { type: 'category', data: products.map((p) => p.name.substring(0, 8)) },
+    xAxis: { type: 'category', data: statData.map((p) => p.productName.substring(0, 8)) },
     yAxis: [{ type: 'value', name: '批次' }, { type: 'value', name: '偏差' }],
     series: [
       {
         name: '批次数量',
         type: 'bar',
-        data: products.map(() => Math.floor(20 + Math.random() * 40)),
+        data: statData.map((p) => p.totalBatches),
         itemStyle: { color: '#1890ff' }
       },
       {
         name: '偏差数',
         type: 'bar',
         yAxisIndex: 1,
-        data: products.map(() => Math.floor(Math.random() * 6)),
+        data: statData.map((p) => p.deviationCount),
         itemStyle: { color: '#ff4d4f' }
       }
     ]
-  };
+  }), [statData]);
 
   const exportPDF = () => {
     const doc = new jsPDF();
@@ -127,9 +117,10 @@ const Statistics: React.FC = () => {
     doc.text(`年度质量回顾报告 - ${dayjs().format('YYYY')}`, 105, 32, { align: 'center' });
     doc.setFontSize(10);
     doc.text(`生成日期: ${dayjs().format('YYYY-MM-DD HH:mm:ss')}`, 14, 42);
-    doc.text('报告范围: 2026年度全年', 14, 48);
+    doc.text(`报告范围: ${dayjs().format('YYYY')}年度全年`, 14, 48);
+    doc.text(`产品筛选: ${selectedProduct === 'all' ? '全部产品' : products.find((p) => p.id === selectedProduct)?.name || ''}`, 14, 54);
 
-    let y = 60;
+    let y = 64;
     autoTable(doc, {
       startY: y,
       head: [['产品名称', '总批次', '平均收率(%)', '一次合格率(%)', '偏差数', '设备利用率(%)']],
@@ -141,17 +132,15 @@ const Statistics: React.FC = () => {
     doc.setFontSize(14);
     doc.text('Summary Statistics', 14, y);
     doc.setFontSize(10);
-    const avgYieldAll = (statData.reduce((a, b) => a + parseFloat(b.avgYield), 0) / statData.length).toFixed(2);
-    const avgFPR = (statData.reduce((a, b) => a + parseFloat(b.firstPassRate), 0) / statData.length).toFixed(2);
-    const totalDev = statData.reduce((a, b) => a + b.deviationCount, 0);
-    doc.text(`Overall Average Yield: ${avgYieldAll}%`, 14, y + 10);
-    doc.text(`Overall First Pass Rate: ${avgFPR}%`, 14, y + 18);
-    doc.text(`Total Deviations: ${totalDev}`, 14, y + 26);
-    doc.text(`Production Lines: ${lines.length}`, 14, y + 34);
-    doc.text(`Active Equipments: ${equipments.length}`, 14, y + 42);
+    doc.text(`Overall Average Yield: ${stats.overallAvgYield}%`, 14, y + 10);
+    doc.text(`Overall First Pass Rate: ${stats.overallAvgFirstPassRate}%`, 14, y + 18);
+    doc.text(`Total Deviations: ${stats.totalDeviations} (轻微:${stats.minorDeviations} 主要:${stats.majorDeviations} 严重:${stats.criticalDeviations})`, 14, y + 26);
+    doc.text(`Total Batches: ${stats.totalBatches}`, 14, y + 34);
+    doc.text(`Production Lines: ${lines.length}`, 14, y + 42);
+    doc.text(`Active Equipments: ${equipments.length}, Avg Utilization: ${stats.overallEquipmentUtil}%`, 14, y + 50);
 
-    doc.save(`QualityReview_${dayjs().format('YYYYMMDD')}.pdf`);
-    msg.success('PDF报告已生成');
+    doc.save(`QualityReview_${dayjs().format('YYYYMMDD_HHmmss')}.pdf`);
+    msg.success('PDF年度质量回顾报告已生成');
   };
 
   const statColumns = [
@@ -188,9 +177,12 @@ const Statistics: React.FC = () => {
             <RangePicker />
           </Col>
           <Col flex="auto" style={{ textAlign: 'right' }}>
-            <Button type="primary" icon={<FilePdfOutlined />} onClick={exportPDF}>
-              导出PDF年度质量回顾报告
-            </Button>
+            <Space>
+              <span style={{ color: '#8c8c8c', fontSize: 12 }}>数据来源: 批次/偏差/设备真实数据汇总</span>
+              <Button type="primary" icon={<FilePdfOutlined />} onClick={exportPDF}>
+                导出PDF年度质量回顾报告
+              </Button>
+            </Space>
           </Col>
         </Row>
       </Card>
@@ -200,7 +192,7 @@ const Statistics: React.FC = () => {
           <Card>
             <Statistic
               title="总生产批次"
-              value={statData.reduce((a, b) => a + b.totalBatches, 0)}
+              value={stats.totalBatches}
               prefix={<BarChartOutlined />}
             />
           </Card>
@@ -209,7 +201,7 @@ const Statistics: React.FC = () => {
           <Card>
             <Statistic
               title="平均收率"
-              value={(statData.reduce((a, b) => a + parseFloat(b.avgYield), 0) / statData.length).toFixed(2)}
+              value={stats.overallAvgYield}
               suffix="%"
               valueStyle={{ color: '#52c41a' }}
               prefix={<RiseOutlined />}
@@ -220,7 +212,7 @@ const Statistics: React.FC = () => {
           <Card>
             <Statistic
               title="一次合格率"
-              value={(statData.reduce((a, b) => a + parseFloat(b.firstPassRate), 0) / statData.length).toFixed(2)}
+              value={stats.overallAvgFirstPassRate}
               suffix="%"
               valueStyle={{ color: '#52c41a' }}
               prefix={<CheckCircleOutlined />}
@@ -231,10 +223,13 @@ const Statistics: React.FC = () => {
           <Card>
             <Statistic
               title="偏差总数"
-              value={statData.reduce((a, b) => a + b.deviationCount, 0)}
+              value={stats.totalDeviations}
               valueStyle={{ color: '#faad14' }}
               prefix={<WarningOutlined />}
             />
+            <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
+              轻:{stats.minorDeviations} / 主:{stats.majorDeviations} / 严:{stats.criticalDeviations}
+            </div>
           </Card>
         </Col>
       </Row>
@@ -260,7 +255,7 @@ const Statistics: React.FC = () => {
           </Row>
         </TabPane>
         <TabPane tab="设备利用率" key="equipment">
-          <Card>
+          <Card title={`平均设备利用率: ${stats.overallEquipmentUtil}%`}>
             <ReactECharts option={equipmentOption} style={{ height: 360 }} />
           </Card>
         </TabPane>

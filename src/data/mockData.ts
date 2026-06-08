@@ -70,7 +70,19 @@ export const mockProducts: Product[] = [
     dosageForm: 'capsule',
     specification: '250mg',
     standard: 'CP2020',
-    shelfLife: 24
+    shelfLife: 24,
+    lastBatch: 'AMX-20260601-01',
+    lastProductionDate: dayjs().subtract(7, 'day').format('YYYY-MM-DD'),
+    batchList: [
+      { id: 'pb-1', batchNo: 'AMX-20260501-01', productionDate: dayjs().subtract(38, 'day').format('YYYY-MM-DD'), quantity: 500000, status: 'released' },
+      { id: 'pb-2', batchNo: 'AMX-20260601-01', productionDate: dayjs().subtract(7, 'day').format('YYYY-MM-DD'), quantity: 500000, status: 'qc' }
+    ],
+    materialList: [
+      { materialId: 'mat-1', materialName: '阿莫西林原料药', dosagePerUnit: 0.25, unit: 'g' },
+      { materialId: 'mat-4', materialName: '药用淀粉', dosagePerUnit: 0.1, unit: 'g' },
+      { materialId: 'mat-5', materialName: '乳糖', dosagePerUnit: 0.05, unit: 'g' },
+      { materialId: 'mat-7', materialName: '明胶空心胶囊', dosagePerUnit: 1, unit: '粒' }
+    ]
   },
   {
     id: 'prod-2',
@@ -79,7 +91,18 @@ export const mockProducts: Product[] = [
     dosageForm: 'capsule',
     specification: '300mg',
     standard: 'CP2020',
-    shelfLife: 36
+    shelfLife: 36,
+    lastBatch: 'IBP-20260415-02',
+    lastProductionDate: dayjs().subtract(54, 'day').format('YYYY-MM-DD'),
+    batchList: [
+      { id: 'pb-3', batchNo: 'IBP-20260415-02', productionDate: dayjs().subtract(54, 'day').format('YYYY-MM-DD'), quantity: 300000, status: 'released' },
+      { id: 'pb-4', batchNo: 'IBP-20260320-01', productionDate: dayjs().subtract(80, 'day').format('YYYY-MM-DD'), quantity: 250000, status: 'released' }
+    ],
+    materialList: [
+      { materialId: 'mat-2', materialName: '布洛芬原料药', dosagePerUnit: 0.3, unit: 'g' },
+      { materialId: 'mat-6', materialName: '微晶纤维素', dosagePerUnit: 0.08, unit: 'g' },
+      { materialId: 'mat-7', materialName: '明胶空心胶囊', dosagePerUnit: 1, unit: '粒' }
+    ]
   },
   {
     id: 'prod-3',
@@ -88,7 +111,19 @@ export const mockProducts: Product[] = [
     dosageForm: 'tablet',
     specification: '30mg',
     standard: 'CP2020',
-    shelfLife: 24
+    shelfLife: 24,
+    lastBatch: 'NFP-20260608-01',
+    lastProductionDate: dayjs().format('YYYY-MM-DD'),
+    batchList: [
+      { id: 'pb-5', batchNo: 'NFP-20260608-01', productionDate: dayjs().format('YYYY-MM-DD'), quantity: 200000, status: 'producing' },
+      { id: 'pb-6', batchNo: 'NFP-20260505-02', productionDate: dayjs().subtract(34, 'day').format('YYYY-MM-DD'), quantity: 200000, status: 'released' }
+    ],
+    materialList: [
+      { materialId: 'mat-3', materialName: '硝苯地平原料药', dosagePerUnit: 0.03, unit: 'g' },
+      { materialId: 'mat-4', materialName: '药用淀粉', dosagePerUnit: 0.15, unit: 'g' },
+      { materialId: 'mat-6', materialName: '微晶纤维素', dosagePerUnit: 0.12, unit: 'g' },
+      { materialId: 'mat-8', materialName: '药用铝箔', dosagePerUnit: 0.005, unit: 'kg' }
+    ]
   },
   {
     id: 'prod-4',
@@ -97,7 +132,15 @@ export const mockProducts: Product[] = [
     dosageForm: 'injection',
     specification: '5ml:500mg',
     standard: 'CP2020',
-    shelfLife: 18
+    shelfLife: 18,
+    lastBatch: 'VIT-20260420-01',
+    lastProductionDate: dayjs().subtract(49, 'day').format('YYYY-MM-DD'),
+    batchList: [
+      { id: 'pb-7', batchNo: 'VIT-20260420-01', productionDate: dayjs().subtract(49, 'day').format('YYYY-MM-DD'), quantity: 80000, status: 'released' }
+    ],
+    materialList: [
+      { materialId: 'mat-5', materialName: '乳糖', dosagePerUnit: 0.05, unit: 'g' }
+    ]
   },
   {
     id: 'prod-5',
@@ -106,7 +149,9 @@ export const mockProducts: Product[] = [
     dosageForm: 'suspension',
     specification: '100ml',
     standard: 'CP2020',
-    shelfLife: 12
+    shelfLife: 12,
+    batchList: [],
+    materialList: []
   }
 ];
 

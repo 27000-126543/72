@@ -213,28 +213,46 @@ const ChangeControlPage: React.FC = () => {
             </Card>
 
             <Card size="small" title="操作">
-              <Space>
-                {selectedChange.status === 'draft' && (
-                  <Button type="primary" onClick={() => updateChangeStatus(selectedChange, 'submitted')}>提交评估</Button>
-                )}
-                {selectedChange.status === 'submitted' && (
-                  <Button type="primary" onClick={() => updateChangeStatus(selectedChange, 'assessing')}>开始评估</Button>
-                )}
-                {selectedChange.status === 'assessing' && currentUser.role !== 'operator' && (
-                  <Button type="primary" onClick={() => updateChangeStatus(selectedChange, 'qa_review')}>送QA审核</Button>
-                )}
-                {selectedChange.status === 'qa_review' && currentUser.role === 'qa' && (
-                  <>
-                    <Button type="primary" onClick={() => updateChangeStatus(selectedChange, 'approved')}>批准</Button>
-                    <Button danger onClick={() => updateChangeStatus(selectedChange, 'rejected')}>驳回</Button>
-                  </>
-                )}
-                {selectedChange.status === 'approved' && (
-                  <Button type="primary" onClick={() => updateChangeStatus(selectedChange, 'implemented')}>标记已实施</Button>
-                )}
-                {selectedChange.status === 'implemented' && currentUser.role === 'qa' && (
-                  <Button type="primary" icon={<SafetyOutlined />} onClick={() => updateChangeStatus(selectedChange, 'closed')}>关闭变更</Button>
-                )}
+              <Space direction="vertical" style={{ width: '100%' }}>
+                <Space wrap>
+                  {selectedChange.status === 'draft' && (
+                    <Button type="primary" onClick={() => updateChangeStatus(selectedChange, 'submitted')}>提交评估</Button>
+                  )}
+                  {selectedChange.status === 'submitted' && (
+                    <Button type="primary" onClick={() => updateChangeStatus(selectedChange, 'assessing')}>开始评估</Button>
+                  )}
+                  {selectedChange.status === 'assessing' && currentUser.role !== 'operator' && (
+                    <Button type="primary" onClick={() => updateChangeStatus(selectedChange, 'qa_review')}>送QA审核</Button>
+                  )}
+                  {selectedChange.status === 'qa_review' && (
+                    <Space direction="vertical" style={{ width: '100%' }}>
+                      {currentUser.role !== 'qa' ? (
+                        <Alert type="warning" showIcon message="当前用户不是QA角色，请点击右上角「角色切换」选择QA角色，或直接以当前角色模拟审批" />
+                      ) : (
+                        <Alert type="success" showIcon message="您当前为QA角色，可执行变更审批" />
+                      )}
+                      <Space>
+                        <Button type="primary" icon={<SafetyOutlined />} onClick={() => updateChangeStatus(selectedChange, 'approved')}>
+                          批准变更{currentUser.role !== 'qa' ? '（模拟）' : ''}
+                        </Button>
+                        <Button danger onClick={() => updateChangeStatus(selectedChange, 'rejected')}>
+                          驳回变更{currentUser.role !== 'qa' ? '（模拟）' : ''}
+                        </Button>
+                      </Space>
+                    </Space>
+                  )}
+                  {selectedChange.status === 'approved' && (
+                    <Button type="primary" onClick={() => updateChangeStatus(selectedChange, 'implemented')}>标记已实施</Button>
+                  )}
+                  {selectedChange.status === 'implemented' && (
+                    <Space direction="vertical" style={{ width: '100%' }}>
+                      {currentUser.role !== 'qa' && (
+                        <Alert type="warning" showIcon message="建议切换QA角色执行关闭操作" />
+                      )}
+                      <Button type="primary" icon={<SafetyOutlined />} onClick={() => updateChangeStatus(selectedChange, 'closed')}>关闭变更</Button>
+                    </Space>
+                  )}
+                </Space>
               </Space>
             </Card>
           </div>
