@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Tabs, Table, Card, Tag, Button, Modal, Descriptions, Timeline as AntdTimeline, Form, Input,
   Select, InputNumber, Space, Steps, Row, Col, Progress, List, Avatar, Divider,
-  message, App, Alert
+  message, App, Alert, Checkbox
 } from 'antd';
 import {
   PlayCircleOutlined, CheckCircleOutlined, CloseCircleOutlined,
@@ -51,9 +51,10 @@ const batchStatusColor: any = {
 
 const ProductionProcess: React.FC = () => {
   const { message: msg } = App.useApp();
-  const { batches, deviations, updateBatchStatus, addBatchParameter, addDeviation, updateDeviation, currentUser } = useAppStore();
+  const { batches, deviations, schedules, salesOrders, products, stabilityStudies, lines, updateBatchStatus, addBatchParameter, addDeviation, updateDeviation, currentUser } = useAppStore();
   const [activeTab, setActiveTab] = useState('batches');
   const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [detailTab, setDetailTab] = useState('production');
   const [selectedBatch, setSelectedBatch] = useState<Batch | null>(null);
   const [paramModalOpen, setParamModalOpen] = useState(false);
   const [paramForm] = Form.useForm();
@@ -61,9 +62,34 @@ const ProductionProcess: React.FC = () => {
   const [deviationForm] = Form.useForm();
   const [deviationDetailOpen, setDeviationDetailOpen] = useState(false);
   const [selectedDeviation, setSelectedDeviation] = useState<Deviation | null>(null);
+  const [releaseModalOpen, setReleaseModalOpen] = useState(false);
+  const [releaseForm] = Form.useForm();
+  const [signatureModalOpen, setSignatureModalOpen] = useState(false);
+  const [signaturePassword, setSignaturePassword] = useState('');
+  const [signatureAction, setSignatureAction] = useState<(() => void) | null>(null);
+  const [signatureTitle, setSignatureTitle] = useState('');
+
+  const requireSignature = (title: string, action: () => void) => {
+    setSignatureTitle(title);
+    setSignatureAction(() => action);
+    setSignaturePassword('');
+    setSignatureModalOpen(true);
+  };
+
+  const confirmSignature = () => {
+    if (signaturePassword !== 'gmp123') {
+      msg.error('签名口令错误，默认口令: gmp123');
+      return;
+    }
+    if (signatureAction) signatureAction();
+    setSignatureModalOpen(false);
+    setSignaturePassword('');
+    setSignatureAction(null);
+  };
 
   const openBatchDetail = (batch: Batch) => {
     setSelectedBatch(batch);
+    setDetailTab('production');
     setDetailModalOpen(true);
   };
 
@@ -71,10 +97,37 @@ const ProductionProcess: React.FC = () => {
     const idx = batchStatusFlow.indexOf(batch.status);
     if (idx < batchStatusFlow.length - 1) {
       const nextStatus = batchStatusFlow[idx + 1];
+      if (nextStatus === 'released') {
+        releaseForm.setFieldsValue({
+          actualQuantity: batch.actualQuantity || batch.plannedQuantity,
+          firstPassYield: batch.firstPassYield !== undefined ? batch.firstPassYield : true,
+          releaseComment: batch.releaseComment || ''
+        });
+        setReleaseModalOpen(true);
+        return;
+      }
       updateBatchStatus(batch.id, nextStatus);
       msg.success(`批次已推进至: ${batchStatusText[nextStatus]}`);
       setSelectedBatch({ ...batch, status: nextStatus });
     }
+  };
+
+  const submitRelease = async () => {
+    if (!selectedBatch) return;
+    try {
+      const values = await releaseForm.validateFields();
+      const actualQty = Number(values.actualQuantity);
+      const yieldVal = parseFloat(((actualQty / selectedBatch.plannedQuantity) * 100).toFixed(2));
+      updateBatchStatus(selectedBatch.id, 'released', {
+        actualQuantity: actualQty,
+        yield: yieldVal,
+        firstPassYield: !!values.firstPassYield,
+        releaseComment: values.releaseComment
+      });
+      msg.success('批次已放行');
+      setReleaseModalOpen(false);
+      setDetailModalOpen(false);
+    } catch (e) {}
   };
 
   const submitParameter = async () => {
@@ -215,20 +268,26 @@ const ProductionProcess: React.FC = () => {
       </Tabs>
 
       {/* Batch Detail */}
-      <Modal title={`批次详情 - ${selectedBatch?.batchNo || ''}`} open={detailModalOpen} onCancel={() => setDetailModalOpen(false)} footer={null} width={900}>
+      <Modal title={`批次详情 - ${selectedBatch?.batchNo || ''}`} open={detailModalOpen} onCancel={() => setDetailModalOpen(false)} footer={null} width={950}>
         {selectedBatch && (
-          <div>
-            <Descriptions bordered size="small" column={3} style={{ marginBottom: 16 }}>
-              <Descriptions.Item label="批号">{selectedBatch.batchNo}</Descriptions.Item>
-              <Descriptions.Item label="产品">{selectedBatch.productName}</Descriptions.Item>
-              <Descriptions.Item label="状态"><Tag color={batchStatusColor[selectedBatch.status]}>{batchStatusText[selectedBatch.status]}</Tag></Descriptions.Item>
-              <Descriptions.Item label="计划产量">{selectedBatch.plannedQuantity.toLocaleString()}</Descriptions.Item>
-              <Descriptions.Item label="实际产量">{selectedBatch.actualQuantity?.toLocaleString() || '-'}</Descriptions.Item>
-              <Descriptions.Item label="收率">{selectedBatch.yield ? `${selectedBatch.yield}%` : '-'}</Descriptions.Item>
-              <Descriptions.Item label="开始时间">{selectedBatch.startTime || '-'}</Descriptions.Item>
-              <Descriptions.Item label="结束时间">{selectedBatch.endTime || '-'}</Descriptions.Item>
-              <Descriptions.Item label="创建人">{selectedBatch.createdBy}</Descriptions.Item>
-            </Descriptions>
+          <Tabs activeKey={detailTab} onChange={setDetailTab} style={{ marginBottom: -16 }}>
+            <TabPane tab="生产详情" key="production">
+              <div>
+                <Descriptions bordered size="small" column={3} style={{ marginBottom: 16 }}>
+                  <Descriptions.Item label="批号">{selectedBatch.batchNo}</Descriptions.Item>
+                  <Descriptions.Item label="产品">{selectedBatch.productName}</Descriptions.Item>
+                  <Descriptions.Item label="状态"><Tag color={batchStatusColor[selectedBatch.status]}>{batchStatusText[selectedBatch.status]}</Tag></Descriptions.Item>
+                  <Descriptions.Item label="计划产量">{selectedBatch.plannedQuantity.toLocaleString()}</Descriptions.Item>
+                  <Descriptions.Item label="实际产量">{selectedBatch.actualQuantity?.toLocaleString() || '-'}</Descriptions.Item>
+                  <Descriptions.Item label="收率">{selectedBatch.yield ? `${selectedBatch.yield}%` : '-'}</Descriptions.Item>
+                  <Descriptions.Item label="一次合格">{selectedBatch.firstPassYield === true ? '是' : selectedBatch.firstPassYield === false ? '否' : '-'}</Descriptions.Item>
+                  <Descriptions.Item label="开始时间">{selectedBatch.startTime || '-'}</Descriptions.Item>
+                  <Descriptions.Item label="结束时间">{selectedBatch.endTime || '-'}</Descriptions.Item>
+                  <Descriptions.Item label="创建人" span={3}>{selectedBatch.createdBy}</Descriptions.Item>
+                  {selectedBatch.releaseComment && (
+                    <Descriptions.Item label="放行意见" span={3}>{selectedBatch.releaseComment}</Descriptions.Item>
+                  )}
+                </Descriptions>
 
             <Card
               title="生产进度"
@@ -301,7 +360,7 @@ const ProductionProcess: React.FC = () => {
             </Row>
 
             {selectedBatch.deviationIds.length > 0 && (
-              <Card title="关联偏差" size="small">
+              <Card title="关联偏差" size="small" style={{ marginBottom: 16 }}>
                 <List
                   size="small"
                   dataSource={deviations.filter((d) => selectedBatch.deviationIds.includes(d.id))}
@@ -318,7 +377,177 @@ const ProductionProcess: React.FC = () => {
                 />
               </Card>
             )}
-          </div>
+              </div>
+            </TabPane>
+            <TabPane tab="全生命周期追溯" key="traceability">
+              {(() => {
+                const schedule = schedules.find((s) => s.id === selectedBatch.scheduleId);
+                const order = schedule ? salesOrders.find((o) => o.id === schedule.salesOrderId) : undefined;
+                const product = products.find((p) => p.id === selectedBatch.productId);
+                const line = lines.find((l) => l.id === selectedBatch.lineId);
+                const productBatch = (product?.batchList || []).find((b) => b.batchNo === selectedBatch.batchNo);
+                const relatedDeviations = deviations.filter((d) => selectedBatch.deviationIds.includes(d.id));
+                const relatedStability = stabilityStudies.filter((s) => s.batchNo === selectedBatch.batchNo);
+
+                const traceEvents: Array<{ time: string; title: string; desc: React.ReactNode; color?: string }> = [];
+
+                if (order) {
+                  traceEvents.push({
+                    time: order.createdAt || dayjs().format('YYYY-MM-DD'),
+                    title: `销售订单 ${order.orderNo}`,
+                    desc: (
+                      <div>
+                        <div>客户: {order.customer}</div>
+                        <div>产品: {product?.name} | 数量: {order.quantity.toLocaleString()} 盒</div>
+                        <div>交期: {order.deliveryDate}</div>
+                      </div>
+                    ),
+                    color: 'blue'
+                  });
+                }
+                if (schedule) {
+                  traceEvents.push({
+                    time: schedule.createdAt || dayjs().format('YYYY-MM-DD'),
+                    title: `生产排程 ${schedule.batchNo}`,
+                    desc: (
+                      <div>
+                        <div>产线: {line?.name || selectedBatch.lineId}</div>
+                        <div>工段: {Object.keys(schedule.workstationStatus || {}).length} 个</div>
+                        <div>状态: {schedule.status}</div>
+                      </div>
+                    ),
+                    color: 'cyan'
+                  });
+                }
+                if (selectedBatch.startTime) {
+                  traceEvents.push({
+                    time: selectedBatch.startTime,
+                    title: '批次开始生产',
+                    desc: (
+                      <div>
+                        <div>批号: {selectedBatch.batchNo}</div>
+                        <div>计划产量: {selectedBatch.plannedQuantity.toLocaleString()}</div>
+                        <div>操作人: {selectedBatch.createdBy}</div>
+                      </div>
+                    ),
+                    color: 'geekblue'
+                  });
+                }
+                if (selectedBatch.parameters && selectedBatch.parameters.length > 0) {
+                  selectedBatch.parameters.forEach((p, i) => {
+                    traceEvents.push({
+                      time: p.timestamp || dayjs().format('YYYY-MM-DD HH:mm'),
+                      title: `工艺参数记录 #${i + 1}`,
+                      desc: (
+                        <div>
+                          <div>参数: {p.name} = {p.value}{p.unit}</div>
+                          <div>范围: {p.minLimit} ~ {p.maxLimit}{p.unit}</div>
+                          {p.isDeviation && <Tag color="red">参数超限</Tag>}
+                        </div>
+                      ),
+                      color: p.isDeviation ? 'red' : 'purple'
+                    });
+                  });
+                }
+                relatedDeviations.forEach((d) => {
+                  traceEvents.push({
+                    time: d.reportTime,
+                    title: `偏差 ${d.deviationNo}`,
+                    desc: (
+                      <div>
+                        <div>{d.title}</div>
+                        <div>类型: <Tag color={d.type === 'critical' ? 'red' : d.type === 'major' ? 'orange' : 'blue'}>{d.type === 'critical' ? '严重' : d.type === 'major' ? '主要' : '次要'}</Tag> | 状态: {d.status}</div>
+                        <Button type="link" size="small" onClick={() => openDeviationDetail(d)}>查看偏差详情</Button>
+                      </div>
+                    ),
+                    color: 'red'
+                  });
+                });
+                if (productBatch) {
+                  traceEvents.push({
+                    time: productBatch.productionDate || dayjs().format('YYYY-MM-DD'),
+                    title: `产品批号 ${productBatch.batchNo}`,
+                    desc: (
+                      <div>
+                        <div>产量: {productBatch.quantity?.toLocaleString() || 0}</div>
+                        <div>有效期: {productBatch.expiryDate || '-'}</div>
+                        <div>状态: <Tag color="green">{productBatch.status}</Tag></div>
+                      </div>
+                    ),
+                    color: 'green'
+                  });
+                }
+                relatedStability.forEach((st) => {
+                  traceEvents.push({
+                    time: st.startDate,
+                    title: `稳定性考察 ${st.studyNo}`,
+                    desc: (
+                      <div>
+                        <div>方案: {st.protocol}</div>
+                        <div>条件: {st.conditions}</div>
+                        <div>进度: {st.completedTests}/{st.totalTests} 个检测点</div>
+                        <div>下次取样: {st.nextSamplingDate}</div>
+                      </div>
+                    ),
+                    color: 'gold'
+                  });
+                });
+                if (selectedBatch.endTime) {
+                  traceEvents.push({
+                    time: selectedBatch.endTime,
+                    title: '批次放行/结束',
+                    desc: (
+                      <div>
+                        <div>状态: <Tag color={selectedBatch.status === 'released' ? 'green' : 'red'}>{batchStatusText[selectedBatch.status]}</Tag></div>
+                        {selectedBatch.actualQuantity !== undefined && <div>实际产量: {selectedBatch.actualQuantity.toLocaleString()}</div>}
+                        {selectedBatch.yield !== undefined && <div>收率: {selectedBatch.yield}%</div>}
+                        {selectedBatch.firstPassYield !== undefined && <div>一次合格: {selectedBatch.firstPassYield ? '是' : '否'}</div>}
+                        {selectedBatch.releaseComment && <div>放行意见: {selectedBatch.releaseComment}</div>}
+                      </div>
+                    ),
+                    color: selectedBatch.status === 'released' ? 'green' : 'red'
+                  });
+                }
+
+                traceEvents.sort((a, b) => dayjs(a.time).valueOf() - dayjs(b.time).valueOf());
+
+                return (
+                  <Card size="small" title="追溯时间线（按时间排序）">
+                    {traceEvents.length > 0 ? (
+                      <AntdTimeline mode="left">
+                        {traceEvents.map((ev, idx) => (
+                          <TimelineItem key={idx} color={ev.color} label={<span style={{ color: '#595959', whiteSpace: 'nowrap' }}>{ev.time}</span>}>
+                            <div style={{ fontWeight: 600, marginBottom: 4 }}>{ev.title}</div>
+                            {ev.desc}
+                          </TimelineItem>
+                        ))}
+                      </AntdTimeline>
+                    ) : (
+                      <div style={{ padding: 24, textAlign: 'center', color: '#8c8c8c' }}>暂无追溯事件</div>
+                    )}
+                    {product && (product.materialList || []).length > 0 && (
+                      <div style={{ marginTop: 16 }}>
+                        <Divider orientation="left">物料配方 BOM</Divider>
+                        <List
+                          size="small"
+                          bordered
+                          dataSource={product.materialList}
+                          renderItem={(m) => (
+                            <List.Item>
+                              <List.Item.Meta
+                                title={m.materialName}
+                                description={`单耗: ${m.dosagePerUnit}${m.unit || ''} | 总需求: ${(m.dosagePerUnit * selectedBatch.plannedQuantity).toFixed(2)}${m.unit || ''}`}
+                              />
+                            </List.Item>
+                          )}
+                        />
+                      </div>
+                    )}
+                  </Card>
+                );
+              })()}
+            </TabPane>
+          </Tabs>
         )}
       </Modal>
 
@@ -413,16 +642,18 @@ const ProductionProcess: React.FC = () => {
               {selectedDeviation.qaReviewHistory && selectedDeviation.qaReviewHistory.length > 0 ? (
                 <AntdTimeline>
                   {selectedDeviation.qaReviewHistory.map((rec: AuditRecord) => {
-                    const dec = deviationDecisionMap[rec.decision];
+                    const dec = deviationDecisionMap[rec.decision] || (rec.decision === 'closed' ? { color: 'green', text: '关闭' } : null);
                     return (
                       <TimelineItem
                         key={rec.id}
                         color={dec?.color || 'blue'}
                       >
-                        <Space>
+                        <Space wrap>
                           <strong>{rec.time}</strong>
                           <Tag color={dec?.color || 'blue'}>{dec?.text || rec.decision}</Tag>
                           <span>审核人: {rec.reviewer}</span>
+                          {rec.role && <Tag color="purple">{roleText[rec.role] || rec.role}</Tag>}
+                          {rec.signatureVerified && <Tag color="green" icon={<SafetyOutlined />}>电子签名已验证</Tag>}
                         </Space>
                         <div style={{ marginTop: 4, color: '#595959' }}>
                           {rec.comment || '无审核意见'}
@@ -461,6 +692,15 @@ const ProductionProcess: React.FC = () => {
               )}
               {selectedDeviation.status === 'investigating' && currentUser.role !== 'operator' && (
                 <Space direction="vertical" style={{ width: '100%' }}>
+                  {selectedDeviation.qaDecision === 'additional_info' && selectedDeviation.qaComment && (
+                    <Alert
+                      type="warning"
+                      showIcon
+                      message="QA要求补充以下信息"
+                      description={selectedDeviation.qaComment}
+                      style={{ marginBottom: 12 }}
+                    />
+                  )}
                   <TextArea
                     rows={3}
                     placeholder="纠正措施..."
@@ -473,12 +713,40 @@ const ProductionProcess: React.FC = () => {
                     value={selectedDeviation.preventiveAction}
                     onChange={(e) => setSelectedDeviation({ ...selectedDeviation, preventiveAction: e.target.value })}
                   />
-                  <Button type="primary" onClick={() => updateDeviationStatus(selectedDeviation, 'corrective_action', { correctiveAction: selectedDeviation.correctiveAction, preventiveAction: selectedDeviation.preventiveAction })}>
+                  <Button type="primary" onClick={() => updateDeviationStatus(selectedDeviation, 'qa_review', { correctiveAction: selectedDeviation.correctiveAction, preventiveAction: selectedDeviation.preventiveAction })}>
                     提交CAPA，送QA审核
                   </Button>
                 </Space>
               )}
-              {(selectedDeviation.status === 'corrective_action' || selectedDeviation.status === 'qa_review') && (
+              {selectedDeviation.status === 'corrective_action' && currentUser.role !== 'operator' && (
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  {selectedDeviation.qaDecision === 'additional_info' && selectedDeviation.qaComment && (
+                    <Alert
+                      type="warning"
+                      showIcon
+                      message="QA要求补充以下信息"
+                      description={selectedDeviation.qaComment}
+                      style={{ marginBottom: 12 }}
+                    />
+                  )}
+                  <TextArea
+                    rows={3}
+                    placeholder="补充纠正措施..."
+                    value={selectedDeviation.correctiveAction}
+                    onChange={(e) => setSelectedDeviation({ ...selectedDeviation, correctiveAction: e.target.value })}
+                  />
+                  <TextArea
+                    rows={3}
+                    placeholder="补充预防措施..."
+                    value={selectedDeviation.preventiveAction}
+                    onChange={(e) => setSelectedDeviation({ ...selectedDeviation, preventiveAction: e.target.value })}
+                  />
+                  <Button type="primary" onClick={() => updateDeviationStatus(selectedDeviation, 'qa_review', { correctiveAction: selectedDeviation.correctiveAction, preventiveAction: selectedDeviation.preventiveAction })}>
+                    补充完成，送QA审核
+                  </Button>
+                </Space>
+              )}
+              {selectedDeviation.status === 'qa_review' && (
                 <Space direction="vertical" style={{ width: '100%' }}>
                   {currentUser.role !== 'qa' && (
                     <Alert
@@ -507,25 +775,29 @@ const ProductionProcess: React.FC = () => {
                     <Button type="primary" icon={<SafetyOutlined />} onClick={() => {
                       if (!selectedDeviation.qaComment) { msg.warning('请填写QA审核意见'); return; }
                       if (!selectedDeviation.qaDecision) { msg.warning('请选择QA审批结论'); return; }
-                      const now = dayjs().format('YYYY-MM-DD HH:mm:ss');
-                      const record: AuditRecord = {
-                        id: 'qa_' + Date.now(),
-                        time: now,
-                        reviewer: currentUser.name,
-                        decision: selectedDeviation.qaDecision,
-                        comment: selectedDeviation.qaComment
-                      };
-                      const nextStatus = selectedDeviation.qaDecision === 'approved' ? 'approved' : 'investigating';
-                      const newHistory = [...(selectedDeviation.qaReviewHistory || []), record];
-                      updateDeviationStatus(selectedDeviation, nextStatus, {
-                        qaApprover: currentUser.name,
-                        qaDecision: selectedDeviation.qaDecision,
-                        qaComment: selectedDeviation.qaComment,
-                        qaReviewHistory: newHistory
+                      requireSignature('偏差QA审批电子签名', () => {
+                        const now = dayjs().format('YYYY-MM-DD HH:mm:ss');
+                        const record: AuditRecord = {
+                          id: 'qa_' + Date.now(),
+                          time: now,
+                          reviewer: currentUser.name,
+                          role: currentUser.role,
+                          decision: selectedDeviation.qaDecision,
+                          comment: selectedDeviation.qaComment,
+                          signatureVerified: true
+                        };
+                        const nextStatus = selectedDeviation.qaDecision === 'approved' ? 'approved' : 'investigating';
+                        const newHistory = [...(selectedDeviation.qaReviewHistory || []), record];
+                        updateDeviationStatus(selectedDeviation, nextStatus, {
+                          qaApprover: currentUser.name,
+                          qaDecision: selectedDeviation.qaDecision,
+                          qaComment: selectedDeviation.qaComment,
+                          qaReviewHistory: newHistory
+                        });
+                        if (selectedDeviation.qaDecision === 'approved') msg.success('QA已批准，可关闭偏差');
+                        else if (selectedDeviation.qaDecision === 'rejected') msg.success('已驳回，返回调查');
+                        else msg.success('已要求补充信息');
                       });
-                      if (selectedDeviation.qaDecision === 'approved') msg.success('QA已批准，可关闭偏差');
-                      else if (selectedDeviation.qaDecision === 'rejected') msg.success('已驳回，返回调查');
-                      else msg.success('已要求补充信息');
                     }}>
                       QA审批{currentUser.role !== 'qa' ? '（模拟）' : ''}
                     </Button>
@@ -537,7 +809,25 @@ const ProductionProcess: React.FC = () => {
                   {currentUser.role !== 'qa' && (
                     <Alert type="warning" showIcon message="建议切换QA角色执行关闭操作" style={{ marginBottom: 12 }} />
                   )}
-                  <Button type="primary" icon={<CheckCircleOutlined />} onClick={() => updateDeviationStatus(selectedDeviation, 'closed', { closedTime: dayjs().format('YYYY-MM-DD HH:mm:ss') })}>
+                  <Button type="primary" icon={<CheckCircleOutlined />} onClick={() => {
+                    requireSignature('偏差关闭电子签名', () => {
+                      const now = dayjs().format('YYYY-MM-DD HH:mm:ss');
+                      const closeRecord: AuditRecord = {
+                        id: 'close_' + Date.now(),
+                        time: now,
+                        reviewer: currentUser.name,
+                        role: currentUser.role,
+                        decision: 'closed',
+                        comment: '偏差关闭签审',
+                        signatureVerified: true
+                      };
+                      updateDeviationStatus(selectedDeviation, 'closed', {
+                        closedTime: now,
+                        qaReviewHistory: [...(selectedDeviation.qaReviewHistory || []), closeRecord]
+                      });
+                      msg.success('偏差已关闭');
+                    });
+                  }}>
                     关闭偏差
                   </Button>
                 </Space>
@@ -547,6 +837,30 @@ const ProductionProcess: React.FC = () => {
               )}
             </Card>
           </div>
+        )}
+      </Modal>
+
+      {/* Release Modal */}
+      <Modal title="批次放行审批" open={releaseModalOpen} onCancel={() => setReleaseModalOpen(false)} onOk={submitRelease} okText="确认放行" okButtonProps={{ icon: <SafetyOutlined /> }}>
+        {selectedBatch && (
+          <Form form={releaseForm} layout="vertical">
+            <Alert type="info" showIcon message="放行信息" description={`批号: ${selectedBatch.batchNo} | 产品: ${selectedBatch.productName} | 计划产量: ${selectedBatch.plannedQuantity.toLocaleString()}`} style={{ marginBottom: 16 }} />
+            <Row gutter={12}>
+              <Col span={12}>
+                <Form.Item name="actualQuantity" label="实际产量" rules={[{ required: true, message: '请输入实际产量' }]}>
+                  <InputNumber style={{ width: '100%' }} min={0} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="firstPassYield" label="一次合格" valuePropName="checked">
+                  <Checkbox>本次生产为一次合格（无返工/重新加工）</Checkbox>
+                </Form.Item>
+              </Col>
+            </Row>
+            <Form.Item name="releaseComment" label="放行意见" rules={[{ required: true, message: '请填写放行意见' }]}>
+              <TextArea rows={3} placeholder="QA或生产主管放行审批意见..." />
+            </Form.Item>
+          </Form>
         )}
       </Modal>
     </div>

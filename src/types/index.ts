@@ -146,6 +146,7 @@ export interface Batch {
   actualQuantity?: number;
   yield?: number;
   firstPassYield?: boolean;
+  releaseComment?: string;
   status: BatchStatus;
   startTime?: string;
   endTime?: string;
@@ -207,8 +208,10 @@ export interface AuditRecord {
   id: string;
   time: string;
   reviewer: string;
+  role: string;
   decision: string;
   comment: string;
+  signatureVerified: boolean;
 }
 
 export interface ChangeControl {

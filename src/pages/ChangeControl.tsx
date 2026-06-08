@@ -31,6 +31,9 @@ const ChangeControlPage: React.FC = () => {
   const [createForm] = Form.useForm();
   const [qaDecision, setQaDecision] = useState<'approved' | 'rejected' | 'additional_info'>('approved');
   const [qaComment, setQaComment] = useState('');
+  const [isEditingImpact, setIsEditingImpact] = useState(false);
+  const [editImpactForm] = Form.useForm();
+  const [additionalNote, setAdditionalNote] = useState('');
 
   const changeStatusFlow = ['draft', 'submitted', 'assessing', 'qa_review', 'approved', 'implemented', 'closed'];
   const changeStatusText: any = { draft: '草稿', submitted: '已提交', assessing: '评估中', qa_review: 'QA审核', approved: '已批准', rejected: '已驳回', implemented: '已实施', closed: '已关闭' };
@@ -40,6 +43,15 @@ const ChangeControlPage: React.FC = () => {
     setSelectedChange(chg);
     setQaDecision(chg.qaDecision || 'approved');
     setQaComment(chg.qaComment || '');
+    setIsEditingImpact(false);
+    setAdditionalNote('');
+    editImpactForm.setFieldsValue({
+      productAffected: chg.impactAssessment.productAffected,
+      processAffected: chg.impactAssessment.processAffected,
+      documentAffected: chg.impactAssessment.documentAffected,
+      validationRequired: chg.impactAssessment.validationRequired,
+      stabilityRequired: chg.impactAssessment.stabilityRequired
+    });
     setDetailModalOpen(true);
   };
 
@@ -322,7 +334,98 @@ const ChangeControlPage: React.FC = () => {
                     <Button type="primary" onClick={() => updateChangeStatus(selectedChange, 'assessing')}>开始评估</Button>
                   )}
                   {selectedChange.status === 'assessing' && currentUser.role !== 'operator' && (
-                    <Button type="primary" onClick={() => updateChangeStatus(selectedChange, 'qa_review')}>送QA审核</Button>
+                    <Space direction="vertical" style={{ width: '100%' }}>
+                      {selectedChange.qaDecision === 'additional_info' && selectedChange.qaComment && (
+                        <Alert
+                          type="warning"
+                          showIcon
+                          message="QA要求补充以下信息"
+                          description={selectedChange.qaComment}
+                        />
+                      )}
+                      {!isEditingImpact ? (
+                        <Space wrap>
+                          <Button onClick={() => setIsEditingImpact(true)}>编辑影响评估/补充说明</Button>
+                          <Button type="primary" onClick={() => updateChangeStatus(selectedChange, 'qa_review')}>送QA审核</Button>
+                        </Space>
+                      ) : (
+                        <Space direction="vertical" style={{ width: '100%' }}>
+                          <Divider orientation="left" style={{ margin: '4px 0' }}>编辑影响评估</Divider>
+                          <Form form={editImpactForm} layout="vertical">
+                            <Form.Item name="productAffected" label="受影响产品">
+                              <Select mode="multiple" options={products.map((p) => ({ value: p.id, label: p.name }))} />
+                            </Form.Item>
+                            <Form.Item name="processAffected" label="受影响工艺">
+                              <Select mode="multiple" options={[
+                                { value: 'mixing', label: '混合工艺' },
+                                { value: 'granulation', label: '制粒工艺' },
+                                { value: 'compression', label: '压片工艺' },
+                                { value: 'coating', label: '包衣工艺' },
+                                { value: 'packaging', label: '包装工艺' }
+                              ]} />
+                            </Form.Item>
+                            <Form.Item name="documentAffected" label="受影响文件">
+                              <Select mode="multiple" options={[
+                                { value: 'spec', label: '质量标准' },
+                                { value: 'bpr', label: '批生产记录' },
+                                { value: 'sop', label: '标准操作规程' },
+                                { value: 'validation', label: '验证方案' }
+                              ]} />
+                            </Form.Item>
+                            <Row gutter={12}>
+                              <Col span={12}>
+                                <Form.Item name="validationRequired" valuePropName="checked">
+                                  <Checkbox>需要进行设备/工艺验证</Checkbox>
+                                </Form.Item>
+                              </Col>
+                              <Col span={12}>
+                                <Form.Item name="stabilityRequired" valuePropName="checked">
+                                  <Checkbox>需要进行稳定性考察</Checkbox>
+                                </Form.Item>
+                              </Col>
+                            </Row>
+                          </Form>
+                          <Divider orientation="left" style={{ margin: '4px 0' }}>补充说明</Divider>
+                          <TextArea
+                            rows={3}
+                            value={additionalNote}
+                            onChange={(e) => setAdditionalNote(e.target.value)}
+                            placeholder="对QA要求补充信息的说明..."
+                          />
+                          <Space wrap style={{ marginTop: 8 }}>
+                            <Button onClick={() => setIsEditingImpact(false)}>取消</Button>
+                            <Button
+                              type="primary"
+                              onClick={() => {
+                                if (!selectedChange) return;
+                                const values = editImpactForm.getFieldsValue();
+                                const updated = {
+                                  ...selectedChange,
+                                  impactAssessment: {
+                                    productAffected: values.productAffected || [],
+                                    processAffected: values.processAffected || [],
+                                    documentAffected: values.documentAffected || [],
+                                    validationRequired: !!values.validationRequired,
+                                    stabilityRequired: !!values.stabilityRequired
+                                  },
+                                  description: additionalNote
+                                    ? (selectedChange.description + '\n\n[' + dayjs().format('YYYY-MM-DD HH:mm') + ' 补充说明] ' + additionalNote)
+                                    : selectedChange.description,
+                                  status: 'qa_review' as const
+                                };
+                                updateChange(selectedChange.id, updated);
+                                setSelectedChange(updated);
+                                setIsEditingImpact(false);
+                                setAdditionalNote('');
+                                msg.success('已保存并送QA审核');
+                              }}
+                            >
+                              保存并送QA审核
+                            </Button>
+                          </Space>
+                        </Space>
+                      )}
+                    </Space>
                   )}
                   {selectedChange.status === 'qa_review' && (
                     <Space direction="vertical" style={{ width: '100%' }}>

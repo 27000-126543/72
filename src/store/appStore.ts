@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type {
   ProductionLine, Product, Material, Equipment, SalesOrder,
   ProductionSchedule, Batch, Deviation, MaintenanceWorkOrder,
@@ -43,7 +44,7 @@ interface AppState {
   updateWorkstationStatus: (scheduleId: string, station: string, status: any) => void;
   requestScheduleAdjustment: (scheduleId: string, station: string, reason: string) => void;
   approveAdjustRequest: (requestId: string, approved: boolean, approver?: string, comment?: string) => void;
-  updateBatchStatus: (id: string, status: Batch['status']) => void;
+  updateBatchStatus: (id: string, status: Batch['status'], releaseData?: { actualQuantity?: number; yield?: number; firstPassYield?: boolean; releaseComment?: string }) => void;
   addBatchParameter: (batchId: string, param: Omit<ProcessParameter, 'id' | 'batchId' | 'isDeviation'>) => void;
   addDeviation: (deviation: Omit<Deviation, 'id' | 'deviationNo' | 'status' | 'reportTime'>) => void;
   updateDeviation: (id: string, data: Partial<Deviation>) => void;
@@ -56,21 +57,22 @@ interface AppState {
   computeStatistics: (productId?: string) => OverallStatisticsData;
 }
 
-export const useAppStore = create<AppState>((set, get) => ({
-  lines: mockLines,
-  products: mockProducts,
-  materials: mockMaterials,
-  equipments: mockEquipments,
-  salesOrders: mockSalesOrders,
-  schedules: mockSchedules,
-  batches: mockBatches,
-  deviations: mockDeviations,
-  maintenanceOrders: mockMaintenanceOrders,
-  changes: mockChanges,
-  stabilityStudies: mockStabilityStudies,
-  users: mockUsers,
-  currentUser: mockUsers[1],
-  adjustRequests: [],
+export const useAppStore = create<AppState>()(persist(
+  (set, get) => ({
+    lines: mockLines,
+    products: mockProducts,
+    materials: mockMaterials,
+    equipments: mockEquipments,
+    salesOrders: mockSalesOrders,
+    schedules: mockSchedules,
+    batches: mockBatches,
+    deviations: mockDeviations,
+    maintenanceOrders: mockMaintenanceOrders,
+    changes: mockChanges,
+    stabilityStudies: mockStabilityStudies,
+    users: mockUsers,
+    currentUser: mockUsers[1],
+    adjustRequests: [],
 
   setCurrentUser: (user) => set({ currentUser: user }),
 
@@ -317,19 +319,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
   },
 
-  updateBatchStatus: (id, status) => {
+  updateBatchStatus: (id, status, releaseData) => {
     set((s) => {
       const batch = s.batches.find((b) => b.id === id);
       const updates: Partial<Batch> = { status };
       if (status === 'preparing' && !batch?.startTime) updates.startTime = dayjs().format('YYYY-MM-DD HH:mm:ss');
       if (status === 'released' || status === 'rejected') {
         updates.endTime = dayjs().format('YYYY-MM-DD HH:mm:ss');
-        if (status === 'released') {
-          updates.actualQuantity = batch ? Math.round(batch.plannedQuantity * (0.9 + Math.random() * 0.08)) : 0;
-          updates.yield = parseFloat(((updates.actualQuantity || 0) / (batch?.plannedQuantity || 1) * 100).toFixed(2));
-          updates.firstPassYield = Math.random() > 0.1;
+        if (status === 'released' && releaseData) {
+          if (releaseData.actualQuantity !== undefined) updates.actualQuantity = releaseData.actualQuantity;
+          if (releaseData.yield !== undefined) updates.yield = releaseData.yield;
+          if (releaseData.firstPassYield !== undefined) updates.firstPassYield = releaseData.firstPassYield;
+          if (releaseData.releaseComment !== undefined) updates.releaseComment = releaseData.releaseComment;
           const updatedBatch = { ...batch, ...updates } as Batch;
           const safeBatchNo = updatedBatch.batchNo || 'B' + dayjs().format('YYYYMMDDHHmm');
+          const safeActualQty = updatedBatch.actualQuantity || 0;
           set((st) => ({
             products: st.products.map((p) =>
               p.id === updatedBatch.productId
@@ -338,12 +342,13 @@ export const useAppStore = create<AppState>((set, get) => ({
                     lastBatch: safeBatchNo,
                     lastProductionDate: dayjs().format('YYYY-MM-DD'),
                     batchList: [
-                      ...(p.batchList || []),
+                      ...(p.batchList || []).filter((pb) => pb.batchNo !== safeBatchNo),
                       {
                         id: uuidv4(),
                         batchNo: safeBatchNo,
                         productionDate: dayjs().format('YYYY-MM-DD'),
-                        quantity: updatedBatch.actualQuantity,
+                        expiryDate: dayjs().add(p.shelfLife || 24, 'month').format('YYYY-MM-DD'),
+                        quantity: safeActualQty,
                         status: 'released' as const
                       }
                     ]
@@ -536,13 +541,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       };
     });
 
-    const productsWithBatches = byProduct.filter((p) => p.totalBatches > 0);
+    const productsWithYield = byProduct.filter((p) => p.avgYield !== '-');
+    const productsWithFpr = byProduct.filter((p) => p.firstPassRate !== '-');
     const totalBatches = byProduct.reduce((a, b) => a + b.totalBatches, 0);
-    const overallAvgYield = productsWithBatches.length > 0
-      ? (productsWithBatches.reduce((a, b) => a + parseFloat(b.avgYield), 0) / productsWithBatches.length).toFixed(2)
+    const overallAvgYield = productsWithYield.length > 0
+      ? (productsWithYield.reduce((a, b) => a + parseFloat(b.avgYield), 0) / productsWithYield.length).toFixed(2)
       : '0.00';
-    const overallAvgFirstPassRate = productsWithBatches.length > 0
-      ? (productsWithBatches.reduce((a, b) => a + parseFloat(b.firstPassRate), 0) / productsWithBatches.length).toFixed(2)
+    const overallAvgFirstPassRate = productsWithFpr.length > 0
+      ? (productsWithFpr.reduce((a, b) => a + parseFloat(b.firstPassRate), 0) / productsWithFpr.length).toFixed(2)
       : '0.00';
 
     const deviations = productIdFilter
@@ -557,7 +563,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     const criticalDeviations = deviations.filter((d) => d.type === 'critical').length;
     const totalDeviations = minorDeviations + majorDeviations + criticalDeviations;
 
-    const allEquipUtils = state.equipments.map((e) => Math.min(100, Math.round((e.runningHours / 5000) * 100)));
+    const allEquipUtils = productIdFilter
+      ? (() => {
+          const productSchedules = state.schedules.filter((s) => s.productId === productIdFilter);
+          const lineIds = [...new Set(productSchedules.map((s) => s.lineId))];
+          const relatedEquipments = state.equipments.filter((e) => lineIds.includes(e.lineId));
+          const targetEquipments = relatedEquipments.length > 0 ? relatedEquipments : state.equipments;
+          return targetEquipments.map((e) => Math.min(100, Math.round((e.runningHours / 5000) * 100)));
+        })()
+      : state.equipments.map((e) => Math.min(100, Math.round((e.runningHours / 5000) * 100)));
     const filledEquipUtils = allEquipUtils;
     const overallEquipmentUtil = filledEquipUtils.length > 0
       ? (filledEquipUtils.reduce((a, b) => a + b, 0) / filledEquipUtils.length).toFixed(1)
@@ -571,6 +585,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const monthEnd = now.month(m).endOf('month');
       const monthBatches = state.batches.filter((b) => {
         if (!b.endTime) return false;
+        if (productIdFilter && b.productId !== productIdFilter) return false;
         const bt = dayjs(b.endTime);
         return bt.isAfter(monthStart) && bt.isBefore(monthEnd) && b.yield !== undefined;
       });
@@ -600,4 +615,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       byProduct
     };
   }
+}), {
+  name: 'gmp-pharma-mes-storage',
+  partialize: (state) => ({
+    lines: state.lines,
+    products: state.products,
+    materials: state.materials,
+    equipments: state.equipments,
+    salesOrders: state.salesOrders,
+    schedules: state.schedules,
+    batches: state.batches,
+    deviations: state.deviations,
+    maintenanceOrders: state.maintenanceOrders,
+    changes: state.changes,
+    stabilityStudies: state.stabilityStudies,
+    adjustRequests: state.adjustRequests,
+    currentUser: state.currentUser
+  })
 }));

@@ -44,6 +44,7 @@ const BasicData: React.FC = () => {
   const [tempBatches, setTempBatches] = useState<ProductBatch[]>([]);
   const [tempMaterials, setTempMaterials] = useState<ProductMaterial[]>([]);
   const [batchModalOpen, setBatchModalOpen] = useState(false);
+  const [editingBatchIdx, setEditingBatchIdx] = useState<number | null>(null);
   const [batchForm] = Form.useForm();
   const [materialModalOpen, setMaterialModalOpen] = useState(false);
   const [bomForm] = Form.useForm();
@@ -111,24 +112,45 @@ const BasicData: React.FC = () => {
     setProductModalOpen(false);
   };
 
-  const openBatchModal = () => {
-    batchForm.resetFields();
+  const openBatchModal = (idx?: number) => {
+    if (idx != null) {
+      setEditingBatchIdx(idx);
+      const b = tempBatches[idx];
+      batchForm.setFieldsValue({
+        batchNo: b.batchNo,
+        productionDate: b.productionDate ? dayjs(b.productionDate) : undefined,
+        expiryDate: b.expiryDate ? dayjs(b.expiryDate) : undefined,
+        quantity: b.quantity,
+        status: b.status
+      });
+    } else {
+      setEditingBatchIdx(null);
+      batchForm.resetFields();
+    }
     setBatchModalOpen(true);
   };
 
   const submitBatch = async () => {
     const values = await batchForm.validateFields();
-    const newBatch: ProductBatch = {
-      id: 'batch_' + Date.now(),
+    const batchData: ProductBatch = {
+      id: editingBatchIdx != null && tempBatches[editingBatchIdx]?.id ? tempBatches[editingBatchIdx].id : 'batch_' + Date.now(),
       batchNo: values.batchNo,
       productionDate: values.productionDate ? values.productionDate.format('YYYY-MM-DD') : undefined,
       expiryDate: values.expiryDate ? values.expiryDate.format('YYYY-MM-DD') : undefined,
       quantity: values.quantity,
       status: values.status
     };
-    setTempBatches([...tempBatches, newBatch]);
+    if (editingBatchIdx != null) {
+      const newBatches = [...tempBatches];
+      newBatches[editingBatchIdx] = batchData;
+      setTempBatches(newBatches);
+      message.success('批号已更新');
+    } else {
+      setTempBatches([...tempBatches, batchData]);
+      message.success('批号已添加');
+    }
     setBatchModalOpen(false);
-    message.success('批号已添加');
+    setEditingBatchIdx(null);
   };
 
   const openBomModal = () => {
@@ -324,7 +346,7 @@ const BasicData: React.FC = () => {
 
           <Divider orientation="left">产品批号管理</Divider>
           <div style={{ marginBottom: 12 }}>
-            <Button size="small" type="primary" icon={<PlusOutlined />} onClick={openBatchModal}>添加批号</Button>
+            <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => openBatchModal()}>添加批号</Button>
           </div>
           {tempBatches.length === 0 ? (
             <div style={{ padding: 24, textAlign: 'center', background: '#fafafa', border: '1px dashed #d9d9d9', borderRadius: 4 }}>
@@ -343,7 +365,8 @@ const BasicData: React.FC = () => {
                 return (
                   <List.Item
                     actions={[
-                      <Popconfirm title="确定删除此批号？" onConfirm={() => setTempBatches(tempBatches.filter((_, i) => i !== idx))}>
+                      <Button key="edit" size="small" type="link" icon={<EditOutlined />} onClick={() => openBatchModal(idx)}>编辑</Button>,
+                      <Popconfirm key="del" title="确定删除此批号？" onConfirm={() => setTempBatches(tempBatches.filter((_, i) => i !== idx))}>
                         <Button size="small" danger icon={<DeleteOutlined />} />
                       </Popconfirm>
                     ]}
@@ -401,10 +424,10 @@ const BasicData: React.FC = () => {
         </Form>
       </Modal>
 
-      <Modal title="添加产品批号" open={batchModalOpen} onCancel={() => setBatchModalOpen(false)} onOk={submitBatch} width={500}>
+      <Modal title={editingBatchIdx != null ? '编辑产品批号' : '添加产品批号'} open={batchModalOpen} onCancel={() => { setBatchModalOpen(false); setEditingBatchIdx(null); }} onOk={submitBatch} width={500}>
         <Form form={batchForm} layout="vertical">
           <Form.Item name="batchNo" label="批号" rules={[{ required: true, message: '请输入批号' }]}>
-            <Input placeholder="如: AML20250101" />
+            <Input placeholder="如: AML20250101" disabled={editingBatchIdx != null} />
           </Form.Item>
           <Row gutter={16}>
             <Col span={12}>
